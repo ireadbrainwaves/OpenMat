@@ -348,11 +348,38 @@ function LobbyScreen({ profile, onStart }) {
       if (am && am.length > 0) setActiveMatch(am[0]);
     })();
 
-    const ch = sb.channel('lobby-invites-' + profile.id).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'match_invites', filter: 'to_profile_id=eq.' + profile.id }, payload => {
+    // Listen for incoming invites
+    const ch1 = sb.channel('lobby-invites-' + profile.id).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'match_invites', filter: 'to_profile_id=eq.' + profile.id }, payload => {
       dbg('Invite received!', 'ok');
       setInvites(prev => [...prev, payload.new]);
     }).subscribe();
-    return () => sb.removeChannel(ch);
+
+    // Listen for matches where I'm a player (catches when opponent accepts my challenge)
+    const ch2 = sb.channel('lobby-matches-' + profile.id).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'matches' }, async (payload) => {
+      const m = payload.new;
+      if ((m.player1_id === profile.id || m.player2_id === profile.id) && m.status === 'active') {
+        dbg('Match started! Auto-joining: ' + m.id, 'ok');
+        onStart(m.id);
+      }
+    }).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches' }, async (payload) => {
+      const m = payload.new;
+      if ((m.player1_id === profile.id || m.player2_id === profile.id) && m.status === 'active') {
+        dbg('Match activated! Auto-joining: ' + m.id, 'ok');
+        onStart(m.id);
+      }
+    }).subscribe();
+
+    // Also poll every 3 seconds as backup
+    const poll = setInterval(async () => {
+      const { data: am } = await sb.from('matches').select('id').or('player1_id.eq.' + profile.id + ',player2_id.eq.' + profile.id).in('status', ['active','overtime']).limit(1);
+      if (am && am.length > 0 && !activeMatch) {
+        dbg('Poll found active match: ' + am[0].id, 'ok');
+        setActiveMatch(am[0]);
+        onStart(am[0].id);
+      }
+    }, 3000);
+
+    return () => { sb.removeChannel(ch1); sb.removeChannel(ch2); clearInterval(poll); };
   }, [profile.id]);
 
   async function challenge(oppId) {
