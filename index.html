@@ -770,7 +770,7 @@ function ResultScreen({ profile, match, onHome, onRematch }) {
       )}
     </div>
     <div style={{ display:'flex', gap:8 }}>
-      <button style={{ ...css.btn(true), flex:1 }} onClick={onRematch}>Rematch</button>
+      <button style={{ ...css.btn(true), flex:1 }} onClick={onRematch}>Send Rematch</button>
       <button style={{ ...css.btn(false), flex:1 }} onClick={onHome}>Home</button>
     </div>
   </div>;
@@ -923,13 +923,10 @@ function App() {
   async function handleRematch() {
     if (!endedMatch) return;
     const oppId = endedMatch.player1_id === profile.id ? endedMatch.player2_id : endedMatch.player1_id;
-    const oppElo = (await sb.from('profiles').select('elo').eq('id', oppId).single()).data?.elo || 1200;
-    const { data: m } = await sb.from('matches').insert({
-      player1_id: profile.id, player2_id: oppId, status: 'active', match_type: 'ranked',
-      player1_elo_before: profile.elo, player2_elo_before: oppElo,
-      started_at: new Date().toISOString(), turn_deadline: new Date(Date.now() + 30000).toISOString()
-    }).select().single();
-    if (m) { setMatchId(m.id); setScreen('match'); }
+    dbg('Sending rematch invite to ' + oppId, 'ok');
+    await sb.from('match_invites').insert({ from_profile_id: profile.id, to_profile_id: oppId, match_type: 'ranked' });
+    // Go to lobby where we'll auto-join when they accept
+    setScreen('main'); setTab('match');
   }
 
   if (screen === 'loading') return <div style={{ ...css.app, ...css.center }}><span className="spinner" style={{ width:30, height:30 }} /><div style={{ color:'var(--dim)', fontSize:13, marginTop:8 }}>Loading Open Mat...</div></div>;
