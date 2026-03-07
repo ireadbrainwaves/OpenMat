@@ -1,0 +1,11 @@
+match_id,p1_name,p1_archetype,p2_name,p2_archetype,winner,method,turns,p1_points,p2_points,p1_elo_delta,p2_elo_delta
+a514b64b-cbd7-40af-87e2-54de0190c56e,Miyao,guard_puller,Marcelo,submission_hunter,Marcelo,Submission - D'Arce Choke (from Front Headlock),3,0,0,-17,17
+c45fe53b-6387-4218-9f5c-eb3170d55abc,Haisam,leg_locker,Rodolfo,pressure_passer,Haisam,Submission - Straight Ankle Lock,2,0,0,14,-14
+9ba03eaa-ae17-4cbd-9e28-ad9ec5b9c927,Marcelo,submission_hunter,Haisam,leg_locker,Draw,Draw,30,0,0,0,0
+9a9c9f72-0405-4db8-8f95-d99daa3ef79f,Ruotolo,scrambler,Iron Mike,wrestler,Ruotolo,Submission - Kimura (from Side Control),8,10,0,14,-14
+275d1481-82f3-4818-bdc8-d6b55cf122b5,Miyao,guard_puller,Ruotolo,scrambler,Draw,Draw,30,0,0,0,0
+57cd7277-1f15-48fd-b407-d0b71a5b9db0,Iron Mike,wrestler,Marcelo,submission_hunter,Marcelo,Submission - Standing Guillotine,4,0,0,-13,13
+1d329e64-298b-4c14-9d4f-e2f7f96cfa9a,Miyao,guard_puller,Haisam,leg_locker,Miyao,Points - 2 to 0,30,2,0,17,-17
+6597d15f-31f7-4adc-b683-cd18de266f42,Miyao,guard_puller,Iron Mike,wrestler,Draw,Draw,30,0,0,0,0
+4032f48f-3572-44bf-a615-559ccdc662ad,Miyao,guard_puller,Ruotolo,scrambler,Draw,Draw,30,0,0,0,0
+3099ab1e-93de-46b1-873d-c5ea7f7b1176,Iron Mike,wrestler,Ruotolo,scrambler,Ruotolo,Points - 4 to 2,30,2,4,-12,12

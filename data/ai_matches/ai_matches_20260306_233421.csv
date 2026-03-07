@@ -1,0 +1,101 @@
+match_id,p1_name,p1_archetype,p2_name,p2_archetype,winner,method,turns,p1_points,p2_points,p1_elo_delta,p2_elo_delta
+e529ca05-4897-4244-89d5-5a26412615a6,Miyao,guard_puller,Haisam,leg_locker,Draw,Draw,30,0,0,0,0
+6b9044cc-8b80-4d2f-9043-7dc65b6f1623,Iron Mike,wrestler,Miyao,guard_puller,Draw,Draw,30,0,0,0,0
+fbd87711-fef6-422d-9dfc-56679deb7182,Miyao,guard_puller,Iron Mike,wrestler,Miyao,Points - 2 to 0,30,2,0,5,-5
+c89790fa-8838-4bd8-8534-18e3f5e18691,Rodolfo,pressure_passer,Iron Mike,wrestler,Iron Mike,Points - 2 to 0,30,0,2,-19,19
+b1495d63-61c8-49fa-9d8a-7881f7f5331f,Marcelo,submission_hunter,Ruotolo,scrambler,Draw,Draw,30,0,0,0,0
+f22dd1c6-3b51-43f7-80b2-2be326fd4c1e,Rodolfo,pressure_passer,Ruotolo,scrambler,Ruotolo,Points - 9 to 4,30,4,9,-15,15
+2b814b80-137d-4d3d-ac03-3e3dd3cef3c4,Marcelo,submission_hunter,Rodolfo,pressure_passer,Marcelo,Submission - D'Arce Choke (from Front Headlock),5,0,0,5,-5
+cb01c853-a195-4301-bdfd-d571c3a78664,Iron Mike,wrestler,Miyao,guard_puller,Draw,Draw,30,0,0,0,0
+7bbe18c1-c9e8-4265-9d28-02a7d43a55bf,Ruotolo,scrambler,Miyao,guard_puller,Miyao,Points - 2 to 0,30,0,2,-8,8
+3914c018-fe64-4297-975b-e652094017cf,Marcelo,submission_hunter,Haisam,leg_locker,Marcelo,Submission - Standing Guillotine,2,0,0,6,-6
+fac3a2f4-34f1-47ce-a143-1e00daabe56d,Miyao,guard_puller,Marcelo,submission_hunter,Draw,Draw,30,0,0,0,0
+9f491747-a931-4f91-badf-f6b1164cee05,Haisam,leg_locker,Ruotolo,scrambler,Ruotolo,Points - 12 to 0,30,0,12,-15,15
+ab20a5c1-bde6-4222-8465-ba8a68a15c75,Ruotolo,scrambler,Rodolfo,pressure_passer,Ruotolo,Submission - Armbar (from Mount),28,11,4,13,-13
+dd150a22-5010-41ab-8863-4bd922a77f33,Rodolfo,pressure_passer,Iron Mike,wrestler,Iron Mike,Points - 14 to 0,30,0,14,-16,16
+fcba1378-68ec-484d-9f45-c3ab386f799d,Iron Mike,wrestler,Rodolfo,pressure_passer,Iron Mike,Points - 2 to 0,30,2,0,15,-15
+f52b7df2-c584-4015-8786-cd1a003fe706,Ruotolo,scrambler,Iron Mike,wrestler,Ruotolo,Submission - Kimura (from Side Control),9,4,0,13,-13
+fa952bae-16e3-4e67-a309-6a177178c8ed,Marcelo,submission_hunter,Iron Mike,wrestler,Draw,Draw,30,0,0,0,0
+9a13068b-34db-4503-828d-25b4f1803145,Miyao,guard_puller,Iron Mike,wrestler,Draw,Draw,30,0,0,0,0
+e76b4acc-7b62-4203-81fe-8baed5736438,Ruotolo,scrambler,Rodolfo,pressure_passer,Rodolfo,Submission - Kimura (from Side Control),4,0,7,-22,22
+d798a5c4-5c7b-45fd-b51e-159ffb8e95b4,Marcelo,submission_hunter,Rodolfo,pressure_passer,Marcelo,Submission - D'Arce Choke (from Front Headlock),2,0,0,4,-4
+0d493d10-49ff-4dc1-92aa-edc96ab8c7bf,Iron Mike,wrestler,Rodolfo,pressure_passer,Iron Mike,Points - 10 to 0,30,10,0,15,-15
+3a3a53f8-47fb-4429-a17b-5a3129972c7c,Marcelo,submission_hunter,Haisam,leg_locker,Marcelo,Submission - D'Arce Choke (from Front Headlock),2,0,0,5,-5
+ffffd5a6-cf28-434a-b1a6-3197f2ef1e30,Rodolfo,pressure_passer,Marcelo,submission_hunter,Marcelo,Submission - Anaconda Choke (from Front Headlock),2,0,0,-4,4
+58025457-a4d0-4103-bfd9-a766acfcf68a,Marcelo,submission_hunter,Rodolfo,pressure_passer,Marcelo,Submission - Standing Guillotine,2,0,0,3,-3
+50bcb3ba-0670-4bd9-8d7c-ff67a05b9cab,Marcelo,submission_hunter,Haisam,leg_locker,Marcelo,Submission - D'Arce Choke (from Front Headlock),2,0,0,4,-4
+34def1e9-841a-4e19-b8c6-4ce9f51bd5e0,Rodolfo,pressure_passer,Iron Mike,wrestler,Iron Mike,Points - 2 to 0,30,0,2,-13,13
+ccccd8c3-1a41-4719-b802-0d6da5944436,Miyao,guard_puller,Ruotolo,scrambler,Miyao,Submission - Standing Guillotine,3,0,0,8,-8
+869c1f84-d228-4462-bd0a-5a12bed829e0,Iron Mike,wrestler,Ruotolo,scrambler,Ruotolo,Points - 4 to 2,30,2,4,-14,14
+41233f77-ced6-406b-ad9f-eaa7b1d731f4,Miyao,guard_puller,Haisam,leg_locker,Miyao,Submission - Standing Guillotine,4,0,0,6,-6
+9e9ceac8-029f-4eaf-a2fd-79e9543b8d3a,Marcelo,submission_hunter,Ruotolo,scrambler,Draw,Draw,30,0,0,0,0
+137d7bb1-0aa4-4536-8bc7-57737871fbcd,Iron Mike,wrestler,Marcelo,submission_hunter,Draw,Draw,30,0,0,0,0
+a901bfc4-bc68-4c44-b65d-25960e5ccf4f,Iron Mike,wrestler,Rodolfo,pressure_passer,Iron Mike,Points - 4 to 0,30,4,0,13,-13
+e034d66b-22d5-440a-a431-778281d4f2a5,Marcelo,submission_hunter,Haisam,leg_locker,Marcelo,Submission - Anaconda Choke (from Front Headlock),2,0,0,4,-4
+9668b2b7-0657-46ac-a35c-9da641b4118b,Iron Mike,wrestler,Marcelo,submission_hunter,Marcelo,Submission - D'Arce Choke (from Front Headlock),2,0,0,-5,5
+786a0ca0-5ee7-4b98-a3f8-2fcb7caac919,Ruotolo,scrambler,Haisam,leg_locker,Ruotolo,Points - 5 to 0,30,5,0,12,-12
+b5311a53-6bef-413f-ba28-ccb4c16579dd,Miyao,guard_puller,Marcelo,submission_hunter,Draw,Draw,30,0,0,0,0
+575e8431-3ed8-4b3c-be5b-0c7e85e7cde6,Miyao,guard_puller,Iron Mike,wrestler,Draw,Draw,30,0,0,0,0
+b91657dc-080e-4ebe-9fef-2bedfc752a4a,Marcelo,submission_hunter,Iron Mike,wrestler,Marcelo,Submission - Anaconda Choke (from Front Headlock),2,0,0,4,-4
+d46bd9b4-83d8-4633-92b7-eb7477e54a8f,Rodolfo,pressure_passer,Haisam,leg_locker,Rodolfo,Submission - Kimura (from Side Control),2,4,0,19,-19
+2799a340-2e95-4135-9b5c-18380195a6be,Miyao,guard_puller,Haisam,leg_locker,Draw,Draw,30,0,0,0,0
+a33f5db3-41b0-4500-b31f-64e912c9e050,Iron Mike,wrestler,Haisam,leg_locker,Draw,Draw,30,0,0,0,0
+19d500cf-4987-4d9c-b243-bbc8f7ce6eec,Rodolfo,pressure_passer,Ruotolo,scrambler,Ruotolo,Points - 17 to 0,30,0,17,-10,10
+41459d8c-ff11-453c-9e9f-9aaa072c10ac,Haisam,leg_locker,Marcelo,submission_hunter,Marcelo,Submission - Standing Guillotine,2,0,0,-3,3
+704d7d8f-e541-44cf-b4d6-44cc39375216,Marcelo,submission_hunter,Miyao,guard_puller,Draw,Draw,30,0,0,0,0
+701cc09e-dbbd-4fbf-a3e0-44f3588dbba9,Haisam,leg_locker,Miyao,guard_puller,Miyao,Submission - Standing Guillotine,2,0,0,-4,4
+8e146ffe-b2a8-4296-93de-b1b3d3210bad,Rodolfo,pressure_passer,Marcelo,submission_hunter,Marcelo,Submission - Anaconda Choke (from Front Headlock),2,0,0,-3,3
+e8e1167f-f794-4030-95d6-a93433bcc499,Rodolfo,pressure_passer,Miyao,guard_puller,Draw,Draw,30,0,0,0,0
+a30a8254-c8ac-4bd8-acf9-34e2a04a88d6,Iron Mike,wrestler,Rodolfo,pressure_passer,Iron Mike,Points - 10 to 0,30,10,0,12,-12
+6ceb0d5a-5d4c-4620-905e-fbdc24e67c1d,Miyao,guard_puller,Marcelo,submission_hunter,Draw,Draw,30,0,0,0,0
+fb77081b-1746-40e1-9be8-77190241c19c,Marcelo,submission_hunter,Miyao,guard_puller,Draw,Draw,30,0,0,0,0
+a3b94bac-3ecd-4b8f-be74-0329deb09310,Haisam,leg_locker,Ruotolo,scrambler,Ruotolo,Points - 2 to 0,30,0,2,-10,10
+c7bf7fbd-5b4b-447b-b425-8608f36a6443,Miyao,guard_puller,Ruotolo,scrambler,Miyao,Submission - Standing Guillotine,7,0,0,9,-9
+46557fc1-47dc-44b9-969d-0fe256c6eee1,Rodolfo,pressure_passer,Ruotolo,scrambler,Rodolfo,Submission - Kimura (from Half Guard Top),4,4,0,24,-24
+2215438a-bb68-4569-80b0-359f3068fe0e,Ruotolo,scrambler,Rodolfo,pressure_passer,Ruotolo,Points - 12 to 4,30,12,4,10,-10
+46bbff94-1d38-4122-80cb-54633c07f2bb,Ruotolo,scrambler,Miyao,guard_puller,Miyao,Submission - Standing Guillotine,2,0,0,-8,8
+bb00280c-6377-4b00-853d-6d8c9bf30dd4,Iron Mike,wrestler,Rodolfo,pressure_passer,Draw,Draw,30,0,0,0,0
+d27ef708-c1e0-4f80-a8b2-724199874776,Iron Mike,wrestler,Marcelo,submission_hunter,Marcelo,Submission - Anaconda Choke (from Front Headlock),2,0,0,-4,4
+184bed89-cc11-48d7-8eb2-8b1b6f70b479,Haisam,leg_locker,Ruotolo,scrambler,Haisam,Submission - Toe Hold,9,0,0,22,-22
+039b1491-71ea-4c62-b454-b196549af1f8,Haisam,leg_locker,Iron Mike,wrestler,Haisam,Submission - Straight Ankle Lock,15,0,7,19,-19
+b7df1fae-070c-41ff-ba41-053daea85c8c,Ruotolo,scrambler,Haisam,leg_locker,Haisam,Submission - Toe Hold,17,2,0,-19,19
+75c6315c-fe11-42c8-b73c-b49caccfc37b,Ruotolo,scrambler,Miyao,guard_puller,Miyao,Submission - Standing Guillotine,4,0,0,-6,6
+b0ca24c5-96ff-43cc-ad8a-5bc9b9f1a0e2,Marcelo,submission_hunter,Iron Mike,wrestler,Draw,Draw,30,0,0,0,0
+652c02a4-b83e-4a2b-86aa-3a898f099f93,Miyao,guard_puller,Marcelo,submission_hunter,Draw,Draw,30,0,0,0,0
+7b8eccf2-f4c6-4b24-92bf-a54162db14c6,Haisam,leg_locker,Ruotolo,scrambler,Haisam,Submission - Toe Hold,18,0,0,17,-17
+d0394973-3dec-4008-825f-309a666c73e9,Ruotolo,scrambler,Iron Mike,wrestler,Ruotolo,Submission - Rear Naked Choke,6,4,7,15,-15
+58a0ec3a-5a06-4483-a0bd-7e7fdf07b25d,Marcelo,submission_hunter,Ruotolo,scrambler,Marcelo,Submission - Standing Guillotine,8,0,0,4,-4
+96522521-05aa-4df7-aaae-0f46614c8e38,Marcelo,submission_hunter,Rodolfo,pressure_passer,Marcelo,Submission - D'Arce Choke (from Front Headlock),2,0,0,3,-3
+fedb6a2e-c99d-4554-987f-2bf3189b1f58,Iron Mike,wrestler,Haisam,leg_locker,Draw,Draw,30,0,0,0,0
+b2353467-f9ab-457b-98e8-61f158746325,Miyao,guard_puller,Ruotolo,scrambler,Draw,Draw,30,0,0,0,0
+8d9aaa38-e905-4b00-879d-72db6418d0e6,Rodolfo,pressure_passer,Marcelo,submission_hunter,Marcelo,Submission - Anaconda Choke (from Front Headlock),2,0,0,-2,2
+56715e00-9409-408e-9e25-17c70a9ead4a,Marcelo,submission_hunter,Miyao,guard_puller,Draw,Draw,30,0,0,0,0
+0066da65-a7c1-473c-badd-6e3169648085,Marcelo,submission_hunter,Haisam,leg_locker,Marcelo,Submission - Standing Guillotine,4,0,0,4,-4
+54ac98b7-427b-4250-a25c-bcc7ac8705ab,Iron Mike,wrestler,Marcelo,submission_hunter,Marcelo,Submission - Triangle Choke (from Closed Guard),5,0,0,-3,3
+3128f020-f931-4135-9d8c-1e5e68cecd0b,Marcelo,submission_hunter,Miyao,guard_puller,Draw,Draw,30,0,0,0,0
+c5c04312-7f5d-4e39-848b-92b8d3c6cbf6,Haisam,leg_locker,Marcelo,submission_hunter,Draw,Draw,30,0,0,0,0
+fb028c92-c5a7-4b3b-9c86-e0982fc2d04b,Ruotolo,scrambler,Miyao,guard_puller,Draw,Draw,30,0,0,0,0
+20604b77-97c7-49b1-8d96-de067e2d3f3f,Haisam,leg_locker,Ruotolo,scrambler,Ruotolo,Submission - Rear Naked Choke,6,0,4,-16,16
+1cb650b4-6e1f-4c79-b227-b49869d31f0b,Marcelo,submission_hunter,Ruotolo,scrambler,Marcelo,Submission - Omoplata (from Closed Guard),3,0,0,4,-4
+12768cc7-53b9-4b9f-9a80-1b396fe32edf,Miyao,guard_puller,Ruotolo,scrambler,Draw,Draw,30,0,0,0,0
+f6427d88-f4df-4fa9-825b-5a0ac7f6e2cb,Rodolfo,pressure_passer,Marcelo,submission_hunter,Draw,Draw,30,0,0,0,0
+9938d22d-f49c-4c38-87e8-d8480218a145,Haisam,leg_locker,Marcelo,submission_hunter,Marcelo,Submission - Standing Guillotine,6,0,0,-3,3
+e10f5f89-830b-478d-98c7-b36f571cfc9c,Ruotolo,scrambler,Haisam,leg_locker,Haisam,Submission - Toe Hold,2,0,0,-18,18
+1a45d244-2e44-40c0-be60-09e7040b9c75,Iron Mike,wrestler,Ruotolo,scrambler,Iron Mike,Points - 16 to 2,30,16,2,18,-18
+8ffc340c-5e2d-4977-9144-47d506a5c82b,Miyao,guard_puller,Iron Mike,wrestler,Miyao,Submission - Standing Guillotine,2,0,0,5,-5
+084c8cb3-34d3-44c9-9ba6-f15a638e005d,Miyao,guard_puller,Ruotolo,scrambler,Draw,Draw,30,0,0,0,0
+257eb458-4c1f-4021-9f0d-461e77f11ab4,Miyao,guard_puller,Iron Mike,wrestler,Draw,Draw,30,0,0,0,0
+72ce7815-d51a-483f-89e9-9e6125bb72a3,Haisam,leg_locker,Iron Mike,wrestler,Haisam,Submission - Kneebar (from Saddle),5,0,0,15,-15
+0d54bbe7-6100-4235-a464-44f3620c4fc9,Rodolfo,pressure_passer,Marcelo,submission_hunter,Draw,Draw,30,0,0,0,0
+28fa2a35-cb06-41dd-9c2b-b38c2c80c9ee,Miyao,guard_puller,Iron Mike,wrestler,Miyao,Submission - Cross Collar Choke (from Closed Guard),3,0,0,4,-4
+61be0418-4a8c-40cb-ae0c-a9671af1bd87,Miyao,guard_puller,Marcelo,submission_hunter,Draw,Draw,30,0,0,0,0
+832aad5a-7c79-4011-9e96-970f942eeaf3,Iron Mike,wrestler,Ruotolo,scrambler,Ruotolo,Points - 15 to 2,30,2,15,-15,15
+7ea58957-b3ca-4682-8b6f-fedcdc31dbb4,Ruotolo,scrambler,Rodolfo,pressure_passer,Rodolfo,Submission - Kimura (from Half Guard Top),25,9,6,-20,20
+5fa466c9-41ad-4bb9-8e5a-e5e533b9425d,Rodolfo,pressure_passer,Iron Mike,wrestler,Draw,Draw,30,4,4,0,0
+848563ad-2d57-42ee-b3df-2155c87309b9,Haisam,leg_locker,Miyao,guard_puller,Miyao,Submission - Standing Guillotine,2,0,0,-5,5
+38240224-23c7-430b-b9c5-4daf7ac5c748,Rodolfo,pressure_passer,Miyao,guard_puller,Draw,Draw,30,0,0,0,0
+7a8a6b15-faff-4a21-8ac9-426f8fc2facb,Ruotolo,scrambler,Haisam,leg_locker,Draw,Draw,30,0,0,0,0
+da1ca82e-8ae9-4950-8811-e5df3981f0be,Haisam,leg_locker,Ruotolo,scrambler,Haisam,Submission - Straight Ankle Lock,3,0,0,15,-15
+ec370b9e-98c7-497c-b4cc-a576f0b80d17,Iron Mike,wrestler,Miyao,guard_puller,Miyao,Submission - Cross Collar Choke (from Closed Guard),3,0,0,-4,4
+e8450f5d-39c1-43a3-9618-f4230dc10dde,Ruotolo,scrambler,Rodolfo,pressure_passer,Rodolfo,Submission - Arm Triangle (from Side Control),2,0,4,-18,18
+672259eb-d25f-48b6-b011-82d925cf5bdf,Ruotolo,scrambler,Rodolfo,pressure_passer,Ruotolo,Points - 12 to 8,30,12,8,16,-16

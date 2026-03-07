@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Open Mat - Balance Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#07070b;--card:#0e0e16;--border:#1a1a2e;--text:#e8e8f0;--dim:#55557a;--accent:#ff3b4f;--blue:#4488ff;--green:#22cc88;--gold:#ffaa33;--purple:#8855ff;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'Space Grotesk',sans-serif;padding:20px;max-width:1400px;margin:0 auto;}
+h1{font-size:28px;font-weight:700;letter-spacing:-1px;margin-bottom:4px;}
+.subtitle{color:var(--dim);font-family:'JetBrains Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:2px;margin-bottom:24px;}
+.grid{display:grid;gap:16px;margin-bottom:16px;}
+.g2{grid-template-columns:1fr 1fr;}
+.g3{grid-template-columns:1fr 1fr 1fr;}
+.g4{grid-template-columns:1fr 1fr 1fr 1fr;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;}
+.card h2{font-size:14px;font-weight:600;margin-bottom:4px;}
+.card .label{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:2px;margin-bottom:12px;}
+.stat-big{font-size:36px;font-weight:700;letter-spacing:-2px;font-family:'JetBrains Mono',monospace;}
+.stat-label{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-top:2px;}
+.bar-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);}
+.bar-row:last-child{border:none;}
+.bar-name{width:140px;font-size:12px;font-weight:500;flex-shrink:0;}
+.bar-track{flex:1;height:20px;background:var(--border);border-radius:4px;overflow:hidden;position:relative;}
+.bar-fill{height:100%;border-radius:4px;transition:width .5s ease;}
+.bar-val{font-family:'JetBrains Mono',monospace;font-size:11px;width:50px;text-align:right;flex-shrink:0;}
+.heatmap{display:grid;gap:2px;font-size:9px;}
+.heatmap-cell{padding:6px 4px;border-radius:4px;text-align:center;font-family:'JetBrains Mono',monospace;font-weight:500;}
+.loading{display:flex;align-items:center;justify-content:center;padding:40px;color:var(--dim);}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+th{text-align:left;padding:8px;border-bottom:2px solid var(--border);font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;}
+td{padding:6px 8px;border-bottom:1px solid var(--border);}
+tr:hover{background:rgba(255,255,255,.02);}
+.tag{display:inline-block;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:600;font-family:'JetBrains Mono',monospace;}
+.tag-dom{background:rgba(34,204,136,.15);color:var(--green);}
+.tag-neu{background:rgba(85,85,122,.15);color:var(--dim);}
+.tag-def{background:rgba(255,170,51,.15);color:var(--gold);}
+.tag-dis{background:rgba(255,59,79,.15);color:var(--accent);}
+canvas{max-height:300px;}
+@media(max-width:900px){.g2,.g3,.g4{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+
+<h1>Open Mat <span style="color:var(--accent)">Balance</span> Dashboard</h1>
+<div class="subtitle">AI Match Analytics &mdash; Live from Supabase</div>
+
+<div class="grid g4" id="top-stats"></div>
+<div class="grid g2">
+  <div class="card"><h2>Archetype Win Rates</h2><div class="label">W / L / D across all AI matches</div><canvas id="chart-winrate"></canvas></div>
+  <div class="card"><h2>Elo Progression</h2><div class="label">Current standings</div><div id="elo-bars"></div></div>
+</div>
+<div class="grid g2">
+  <div class="card"><h2>Deadliest Positions</h2><div class="label">Submissions per position</div><canvas id="chart-positions"></canvas></div>
+  <div class="card"><h2>Position Time Spent</h2><div class="label">Where games live (turns per position)</div><canvas id="chart-time"></canvas></div>
+</div>
+<div class="grid g2">
+  <div class="card"><h2>Win Methods</h2><div class="label">How matches end</div><canvas id="chart-methods"></canvas></div>
+  <div class="card"><h2>Top Finishing Moves</h2><div class="label">Moves that get taps</div><div id="top-moves"></div></div>
+</div>
+<div class="grid g2">
+  <div class="card"><h2>Move Type Interactions</h2><div class="label">What happens when move types collide</div><div id="move-interactions"></div></div>
+  <div class="card"><h2>Stance Effectiveness</h2><div class="label">Win rate by stance matchup</div><div id="stance-matrix"></div></div>
+</div>
+<div class="grid g2">
+  <div class="card"><h2>Transition Success Rate</h2><div class="label">How often each move type succeeds vs fails</div><canvas id="chart-success"></canvas></div>
+  <div class="card"><h2>Counter Accuracy</h2><div class="label">How often counters actually stop attacks</div><div id="counter-accuracy"></div></div>
+</div>
+<div class="grid" style="grid-template-columns:1fr;">
+  <div class="card"><h2>Archetype Position Matrix</h2><div class="label">How each archetype experiences positions</div><div id="matrix-heatmap"></div></div>
+</div>
+<div class="grid g2">
+  <div class="card"><h2>Submissions per Archetype</h2><div class="label">Sub count by position family per archetype</div><div id="deck-subs"></div></div>
+  <div class="card"><h2>Deck Composition</h2><div class="label">Move type breakdown per archetype</div><canvas id="chart-deck-comp"></canvas></div>
+</div>
+<div class="grid" style="grid-template-columns:1fr;">
+  <div class="card"><h2>Dead Zones</h2><div class="label">Positions reached in matches where archetype has 0 moves - these cause stalling</div><div id="dead-zones"></div></div>
+</div>
+<div class="grid" style="grid-template-columns:1fr;">
+  <div class="card"><h2>Move Frequency</h2><div class="label">Most played moves across all matches</div><div id="move-frequency"></div></div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://efsswnwiehpejczlttwr.supabase.co';
+const SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVmc3N3bndpZWhwZWpjemx0dHdyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjgzMTQ5OCwiZXhwIjoyMDg4NDA3NDk4fQ.tVx88CtH9W7j_5IdO0_AL36ehpCE22Yn8Xqbk1nAgbk';
+const sb = window.supabase.createClient(SUPABASE_URL, SERVICE_KEY);
+
+const archColors = {
+  wrestler:'#ff6644', guard_puller:'#4488ff', leg_locker:'#22cc88',
+  pressure_passer:'#ffaa33', submission_hunter:'#ff3b4f', scrambler:'#8855ff'
+};
+const archLabels = {
+  wrestler:'Wrestler', guard_puller:'Guard Puller', leg_locker:'Leg Locker',
+  pressure_passer:'Pressure Passer', submission_hunter:'Sub Hunter', scrambler:'Scrambler'
+};
+
+async function loadData() {
+  const [matchesR, turnsR, profilesR, matrixR, positionsR, stacksR] = await Promise.all([
+    sb.from('matches').select('*').eq('status','finished'),
+    sb.from('match_turns').select('*'),
+    sb.from('profiles').select('*').like('username','ai_%'),
+    sb.from('archetype_position_matrix').select('*'),
+    sb.from('positions').select('*'),
+    sb.from('player_move_stacks').select('profile_id, technique_id')
+  ]);
+  return {
+    matches: matchesR.data || [],
+    turns: turnsR.data || [],
+    profiles: profilesR.data || [],
+    matrix: matrixR.data || [],
+    positions: positionsR.data || [],
+    stacks: stacksR.data || []
+  };
+}
+
+async function render(data) {
+  const { matches, turns, profiles, matrix, positions, stacks } = data;
+  const posMap = {};
+  positions.forEach(p => posMap[p.id] = p);
+
+  // === TOP STATS ===
+  const totalMatches = matches.length;
+  const totalTurns = turns.length;
+  const totalSubs = matches.filter(m => m.win_method && m.win_method.includes('Submission')).length;
+  const avgTurns = totalMatches > 0 ? Math.round(totalTurns / totalMatches) : 0;
+  const draws = matches.filter(m => !m.winner_id).length;
+
+  document.getElementById('top-stats').innerHTML = [
+    ['Matches', totalMatches, '--accent'],
+    ['Total Turns', totalTurns.toLocaleString(), '--blue'],
+    ['Submissions', totalSubs, '--green'],
+    ['Avg Turns/Match', avgTurns, '--gold']
+  ].map(([l,v,c]) => `<div class="card"><div class="stat-big" style="color:var(${c})">${v}</div><div class="stat-label">${l}</div></div>`).join('');
+
+  // === ARCHETYPE WIN RATES ===
+  const archStats = {};
+  profiles.forEach(p => { archStats[p.archetype] = { wins:0, losses:0, draws:0, elo:p.elo, name:p.display_name }; });
+  matches.forEach(m => {
+    const p1 = profiles.find(p => p.id === m.player1_id);
+    const p2 = profiles.find(p => p.id === m.player2_id);
+    if (!p1 || !p2) return;
+    if (m.winner_id === p1.id) { archStats[p1.archetype].wins++; archStats[p2.archetype].losses++; }
+    else if (m.winner_id === p2.id) { archStats[p2.archetype].wins++; archStats[p1.archetype].losses++; }
+    else { archStats[p1.archetype].draws++; archStats[p2.archetype].draws++; }
+  });
+
+  const archs = Object.keys(archStats).sort();
+  new Chart(document.getElementById('chart-winrate'), {
+    type: 'bar',
+    data: {
+      labels: archs.map(a => archLabels[a] || a),
+      datasets: [
+        { label:'Wins', data:archs.map(a=>archStats[a].wins), backgroundColor:'rgba(34,204,136,.7)' },
+        { label:'Losses', data:archs.map(a=>archStats[a].losses), backgroundColor:'rgba(255,59,79,.7)' },
+        { label:'Draws', data:archs.map(a=>archStats[a].draws), backgroundColor:'rgba(85,85,122,.5)' }
+      ]
+    },
+    options: { responsive:true, plugins:{legend:{labels:{color:'#888',font:{size:10}}}}, scales:{x:{ticks:{color:'#888',font:{size:10}}},y:{ticks:{color:'#888'},grid:{color:'#1a1a2e'}}} }
+  });
+
+  // === ELO BARS ===
+  const sorted = [...profiles].sort((a,b) => b.elo - a.elo);
+  const maxElo = Math.max(...sorted.map(p=>p.elo), 1300);
+  document.getElementById('elo-bars').innerHTML = sorted.map(p => {
+    const pct = Math.max(10, (p.elo / maxElo) * 100);
+    const c = archColors[p.archetype] || '#888';
+    return `<div class="bar-row">
+      <div class="bar-name">${p.display_name}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${c}"></div></div>
+      <div class="bar-val" style="color:${c}">${p.elo}</div>
+    </div>`;
+  }).join('');
+
+  // === POSITION SUBS ===
+  const posTurns = {};
+  turns.forEach(t => {
+    const np = t.new_position || 'unknown';
+    if (!posTurns[np]) posTurns[np] = { turns:0, subs:0, transitions:0 };
+    posTurns[np].turns++;
+    if (t.result === 'submission_win') posTurns[np].subs++;
+    if (t.result === 'position_change') posTurns[np].transitions++;
+  });
+
+  const topSubPos = Object.entries(posTurns).filter(([k,v])=>v.subs>0).sort((a,b)=>b[1].subs-a[1].subs).slice(0,10);
+  new Chart(document.getElementById('chart-positions'), {
+    type: 'bar',
+    data: {
+      labels: topSubPos.map(([k]) => (posMap[k]?.name || k).replace(/ \(.*\)/,'').substring(0,25)),
+      datasets: [{ label:'Submissions', data:topSubPos.map(([k,v])=>v.subs), backgroundColor:'rgba(255,59,79,.7)', borderRadius:4 }]
+    },
+    options: { indexAxis:'y', responsive:true, plugins:{legend:{display:false}}, scales:{x:{ticks:{color:'#888'},grid:{color:'#1a1a2e'}},y:{ticks:{color:'#888',font:{size:10}}}} }
+  });
+
+  // === TIME SPENT ===
+  const topTimePos = Object.entries(posTurns).sort((a,b)=>b[1].turns-a[1].turns).slice(0,10);
+  new Chart(document.getElementById('chart-time'), {
+    type: 'bar',
+    data: {
+      labels: topTimePos.map(([k]) => (posMap[k]?.name || k).replace(/ \(.*\)/,'').substring(0,25)),
+      datasets: [{ label:'Turns', data:topTimePos.map(([k,v])=>v.turns), backgroundColor:'rgba(68,136,255,.7)', borderRadius:4 }]
+    },
+    options: { indexAxis:'y', responsive:true, plugins:{legend:{display:false}}, scales:{x:{ticks:{color:'#888'},grid:{color:'#1a1a2e'}},y:{ticks:{color:'#888',font:{size:10}}}} }
+  });
+
+  // === WIN METHODS ===
+  const methods = {};
+  matches.forEach(m => {
+    let method = 'Draw';
+    if (m.win_method) {
+      if (m.win_method.includes('Submission')) method = 'Submission';
+      else if (m.win_method.includes('Points')) method = 'Points';
+      else method = m.win_method;
+    }
+    methods[method] = (methods[method]||0) + 1;
+  });
+  new Chart(document.getElementById('chart-methods'), {
+    type: 'doughnut',
+    data: {
+      labels: Object.keys(methods),
+      datasets: [{ data:Object.values(methods), backgroundColor:['#ff3b4f','#4488ff','#55557a','#ffaa33'] }]
+    },
+    options: { responsive:true, plugins:{legend:{labels:{color:'#888',font:{size:11}},position:'bottom'}} }
+  });
+
+  // === TOP FINISHING MOVES ===
+  // Load techniques to know which moves are submissions
+  const techRes = await sb.from('techniques').select('id,name,type');
+  const techMap = {};
+  if (techRes.data) techRes.data.forEach(t => techMap[t.id] = t);
+
+  const moveSubs = {};
+  turns.filter(t => t.result === 'submission_win').forEach(t => {
+    // Check which move is actually a submission
+    const t1 = techMap[t.player1_move];
+    const t2 = techMap[t.player2_move];
+    if (t1 && t1.type === 'submission') {
+      moveSubs[t.player1_move] = (moveSubs[t.player1_move]||0) + 1;
+    } else if (t2 && t2.type === 'submission') {
+      moveSubs[t.player2_move] = (moveSubs[t.player2_move]||0) + 1;
+    }
+  });
+  const topMoves = Object.entries(moveSubs).sort((a,b)=>b[1]-a[1]).slice(0,10);
+
+  document.getElementById('top-moves').innerHTML = `<table><thead><tr><th>Move</th><th>Taps</th></tr></thead><tbody>${
+    topMoves.map(([mid, count]) => {
+      const name = techMap[mid]?.name || mid;
+      return `<tr><td style="font-weight:500">${name}</td><td><span style="color:var(--accent);font-family:'JetBrains Mono';font-weight:600">${count}</span></td></tr>`;
+    }).join('')
+  }</tbody></table>`;
+
+  // === MOVE TYPE INTERACTIONS ===
+  const moveTypes = ['submission','sweep','takedown','transition','escape'];
+  const interactions = {};
+  // Init grid
+  moveTypes.forEach(t1 => { interactions[t1] = {}; moveTypes.forEach(t2 => { interactions[t1][t2] = {total:0, p1wins:0, p2wins:0, holds:0}; }); });
+  // Also track counter interactions
+  const counterInts = {};
+  moveTypes.forEach(t => { counterInts[t] = {total:0, countered:0, got_through:0}; });
+
+  turns.forEach(t => {
+    const t1 = techMap[t.player1_move];
+    const t2 = techMap[t.player2_move];
+    const p1type = t1?.type || (t.player1_move_is_counter ? 'counter' : 'unknown');
+    const p2type = t2?.type || (t.player2_move_is_counter ? 'counter' : 'unknown');
+
+    // Track type vs type
+    if (p1type !== 'counter' && p1type !== 'unknown' && p2type !== 'counter' && p2type !== 'unknown') {
+      if (!interactions[p1type]) interactions[p1type] = {};
+      if (!interactions[p1type][p2type]) interactions[p1type][p2type] = {total:0,p1wins:0,p2wins:0,holds:0};
+      interactions[p1type][p2type].total++;
+      if (t.result === 'submission_win' || t.result === 'position_change') {
+        if (t.winner_id) interactions[p1type][p2type].p1wins++;
+        else interactions[p1type][p2type].holds++;
+      } else {
+        interactions[p1type][p2type].holds++;
+      }
+    }
+
+    // Track attack vs counter
+    if (p1type !== 'counter' && p1type !== 'unknown' && p2type === 'counter') {
+      if (!counterInts[p1type]) counterInts[p1type] = {total:0,countered:0,got_through:0};
+      counterInts[p1type].total++;
+      if (t.result === 'counter_success') counterInts[p1type].countered++;
+      else counterInts[p1type].got_through++;
+    }
+    if (p2type !== 'counter' && p2type !== 'unknown' && p1type === 'counter') {
+      if (!counterInts[p2type]) counterInts[p2type] = {total:0,countered:0,got_through:0};
+      counterInts[p2type].total++;
+      if (t.result === 'counter_success') counterInts[p2type].countered++;
+      else counterInts[p2type].got_through++;
+    }
+  });
+
+  // Render interaction matrix
+  let intHtml = '<div style="overflow-x:auto;"><table><thead><tr><th>P1 \\ P2</th>';
+  moveTypes.forEach(t => intHtml += `<th>${t.substring(0,6)}</th>`);
+  intHtml += '<th>counter</th></tr></thead><tbody>';
+  moveTypes.forEach(t1 => {
+    intHtml += `<tr><td style="font-weight:600;font-size:11px">${t1}</td>`;
+    moveTypes.forEach(t2 => {
+      const d = interactions[t1]?.[t2] || {total:0};
+      const bg = d.total > 10 ? 'rgba(255,255,255,.03)' : 'transparent';
+      intHtml += `<td style="text-align:center;background:${bg};font-family:'JetBrains Mono';font-size:10px">${d.total || '-'}</td>`;
+    });
+    // Counter column
+    const cd = counterInts[t1] || {total:0,countered:0,got_through:0};
+    const counterRate = cd.total > 0 ? Math.round(cd.countered / cd.total * 100) : 0;
+    const counterColor = counterRate > 50 ? 'var(--green)' : counterRate > 25 ? 'var(--gold)' : 'var(--accent)';
+    intHtml += `<td style="text-align:center;font-family:'JetBrains Mono';font-size:10px"><span style="color:${counterColor}">${counterRate}%</span><br><span style="color:var(--dim);font-size:8px">${cd.total} att</span></td>`;
+    intHtml += '</tr>';
+  });
+  intHtml += '</tbody></table></div>';
+  document.getElementById('move-interactions').innerHTML = intHtml;
+
+  // === STANCE EFFECTIVENESS ===
+  const stances = ['attack','defend','setup'];
+  const stanceStats = {};
+  stances.forEach(s1 => { stanceStats[s1] = {}; stances.forEach(s2 => { stanceStats[s1][s2] = {total:0,p1wins:0,subs:0}; }); });
+
+  turns.forEach(t => {
+    const s1 = t.player1_stance;
+    const s2 = t.player2_stance;
+    if (s1 && s2 && stanceStats[s1] && stanceStats[s1][s2]) {
+      stanceStats[s1][s2].total++;
+      if (t.result === 'submission_win' || t.result === 'position_change') stanceStats[s1][s2].p1wins++;
+      if (t.result === 'submission_win') stanceStats[s1][s2].subs++;
+    }
+  });
+
+  let stHtml = '<div style="overflow-x:auto;"><table><thead><tr><th>Your Stance \\ Opp</th>';
+  stances.forEach(s => stHtml += `<th>${s}</th>`);
+  stHtml += '</tr></thead><tbody>';
+  stances.forEach(s1 => {
+    stHtml += `<tr><td style="font-weight:600;font-size:12px;text-transform:capitalize">${s1}</td>`;
+    stances.forEach(s2 => {
+      const d = stanceStats[s1][s2];
+      const rate = d.total > 0 ? Math.round(d.p1wins / d.total * 100) : 0;
+      const subRate = d.total > 0 ? Math.round(d.subs / d.total * 100) : 0;
+      const bg = rate > 40 ? 'rgba(34,204,136,.1)' : rate < 20 ? 'rgba(255,59,79,.1)' : 'transparent';
+      stHtml += `<td style="text-align:center;background:${bg}">
+        <div style="font-family:'JetBrains Mono';font-size:14px;font-weight:600">${rate}%</div>
+        <div style="font-size:9px;color:var(--dim)">${d.total} turns</div>
+        <div style="font-size:9px;color:var(--accent)">${subRate}% sub</div>
+      </td>`;
+    });
+    stHtml += '</tr>';
+  });
+  stHtml += '</tbody></table></div>';
+  document.getElementById('stance-matrix').innerHTML = stHtml;
+
+  // === TRANSITION SUCCESS RATE CHART ===
+  const typeSuccess = {};
+  turns.forEach(t => {
+    const t1 = techMap[t.player1_move];
+    if (t1 && t1.type !== 'escape') {
+      if (!typeSuccess[t1.type]) typeSuccess[t1.type] = {attempts:0, success:0, taps:0};
+      typeSuccess[t1.type].attempts++;
+      if (t.result === 'position_change' || t.result === 'submission_win') typeSuccess[t1.type].success++;
+      if (t.result === 'submission_win') typeSuccess[t1.type].taps++;
+    }
+    const t2 = techMap[t.player2_move];
+    if (t2 && t2.type !== 'escape') {
+      if (!typeSuccess[t2.type]) typeSuccess[t2.type] = {attempts:0, success:0, taps:0};
+      typeSuccess[t2.type].attempts++;
+      if (t.result === 'position_change' || t.result === 'submission_win') typeSuccess[t2.type].success++;
+      if (t.result === 'submission_win') typeSuccess[t2.type].taps++;
+    }
+  });
+
+  const tsTypes = Object.keys(typeSuccess).filter(t => typeSuccess[t].attempts > 5);
+  new Chart(document.getElementById('chart-success'), {
+    type: 'bar',
+    data: {
+      labels: tsTypes.map(t => t.charAt(0).toUpperCase() + t.slice(1)),
+      datasets: [
+        { label:'Success %', data:tsTypes.map(t => Math.round(typeSuccess[t].success / typeSuccess[t].attempts * 100)), backgroundColor:'rgba(34,204,136,.7)', borderRadius:4 },
+        { label:'Tap %', data:tsTypes.map(t => Math.round(typeSuccess[t].taps / typeSuccess[t].attempts * 100)), backgroundColor:'rgba(255,59,79,.7)', borderRadius:4 }
+      ]
+    },
+    options: { responsive:true, plugins:{legend:{labels:{color:'#888',font:{size:10}}}}, scales:{x:{ticks:{color:'#888'}},y:{ticks:{color:'#888'},grid:{color:'#1a1a2e'},max:100}} }
+  });
+
+  // === COUNTER ACCURACY ===
+  let caHtml = '<table><thead><tr><th>Attack Type</th><th>Attempts</th><th>Countered</th><th>Got Through</th><th>Counter %</th></tr></thead><tbody>';
+  moveTypes.forEach(mt => {
+    const d = counterInts[mt];
+    if (!d || d.total === 0) return;
+    const rate = Math.round(d.countered / d.total * 100);
+    const color = rate > 50 ? 'var(--green)' : rate > 25 ? 'var(--gold)' : 'var(--accent)';
+    caHtml += `<tr>
+      <td style="font-weight:500;text-transform:capitalize">${mt}</td>
+      <td style="font-family:'JetBrains Mono'">${d.total}</td>
+      <td style="font-family:'JetBrains Mono';color:var(--green)">${d.countered}</td>
+      <td style="font-family:'JetBrains Mono';color:var(--accent)">${d.got_through}</td>
+      <td style="font-family:'JetBrains Mono';font-weight:600;color:${color}">${rate}%</td>
+    </tr>`;
+  });
+  caHtml += '</tbody></table>';
+  document.getElementById('counter-accuracy').innerHTML = caHtml;
+
+  // === ARCHETYPE MATRIX HEATMAP ===
+  const matMap = {};
+  matrix.forEach(r => { matMap[r.position_id+'|'+r.archetype] = r.status; });
+  const topPositions = Object.entries(posTurns).sort((a,b)=>b[1].turns-a[1].turns).slice(0,20).map(([k])=>k);
+  const archList = ['wrestler','guard_puller','leg_locker','pressure_passer','submission_hunter','scrambler'];
+  
+  const statusColor = {
+    dominant:'rgba(34,204,136,.25)', neutral:'rgba(85,85,122,.15)',
+    defending:'rgba(255,170,51,.2)', disadvantaged:'rgba(255,59,79,.25)'
+  };
+  const statusTag = {
+    dominant:'tag-dom', neutral:'tag-neu', defending:'tag-def', disadvantaged:'tag-dis'
+  };
+
+  let html = '<div style="overflow-x:auto;"><table><thead><tr><th>Position</th>';
+  archList.forEach(a => html += `<th style="color:${archColors[a]}">${(archLabels[a]||a).substring(0,10)}</th>`);
+  html += '</tr></thead><tbody>';
+  topPositions.forEach(pid => {
+    const pname = (posMap[pid]?.name || pid).replace(/ \(.*\)/,'').substring(0,30);
+    const pt = posTurns[pid] || {turns:0,subs:0};
+    html += `<tr><td style="font-weight:500;font-size:11px">${pname} <span style="color:var(--dim);font-size:9px">(${pt.turns}t, ${pt.subs}s)</span></td>`;
+    archList.forEach(a => {
+      const st = matMap[pid+'|'+a] || 'neutral';
+      html += `<td><span class="tag ${statusTag[st]}">${st.substring(0,3).toUpperCase()}</span></td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  document.getElementById('matrix-heatmap').innerHTML = html;
+
+  // === SUBMISSIONS PER ARCHETYPE BY POSITION FAMILY ===
+  const deckByArch = {};
+  profiles.forEach(p => { deckByArch[p.id] = { archetype: p.archetype, name: p.display_name, techs: [] }; });
+  stacks.forEach(s => { if (deckByArch[s.profile_id]) deckByArch[s.profile_id].techs.push(s.technique_id); });
+
+  const archSubs = {};
+  const archDeckComp = {};
+  Object.values(deckByArch).forEach(d => {
+    const arch = d.archetype;
+    if (!archSubs[arch]) archSubs[arch] = {};
+    if (!archDeckComp[arch]) archDeckComp[arch] = { submission:0, sweep:0, takedown:0, transition:0, escape:0 };
+    d.techs.forEach(tid => {
+      const t = techMap[tid];
+      if (!t) return;
+      if (archDeckComp[arch][t.type] !== undefined) archDeckComp[arch][t.type]++;
+      if (t.type === 'submission') {
+        const pos = posMap[t.from_position];
+        const fam = pos?.family || 'unknown';
+        archSubs[arch][fam] = (archSubs[arch][fam] || 0) + 1;
+      }
+    });
+  });
+
+  let subHtml = '<div style="overflow-x:auto;"><table><thead><tr><th>Archetype</th><th>Guard</th><th>Side Ctrl</th><th>Mount</th><th>Back</th><th>Clinch</th><th>Leg Ent.</th><th>Total</th></tr></thead><tbody>';
+  const subFams = ['guard','side_control','mount','back','clinch','leg_entanglement'];
+  Object.entries(archSubs).sort((a,b) => a[0].localeCompare(b[0])).forEach(([arch, fams]) => {
+    const total = Object.values(fams).reduce((a,b) => a+b, 0);
+    const c = archColors[arch] || '#888';
+    subHtml += `<tr><td style="font-weight:600;color:${c}">${archLabels[arch] || arch}</td>`;
+    subFams.forEach(f => {
+      const v = fams[f] || 0;
+      const bg = v === 0 ? 'rgba(255,59,79,.1)' : v >= 5 ? 'rgba(34,204,136,.1)' : 'transparent';
+      subHtml += `<td style="text-align:center;font-family:'JetBrains Mono';background:${bg};color:${v===0?'var(--accent)':'var(--text)'}">${v}</td>`;
+    });
+    subHtml += `<td style="text-align:center;font-family:'JetBrains Mono';font-weight:600">${total}</td></tr>`;
+  });
+  subHtml += '</tbody></table></div>';
+  document.getElementById('deck-subs').innerHTML = subHtml;
+
+  // === DECK COMPOSITION CHART ===
+  const compTypes = ['submission','sweep','takedown','transition','escape'];
+  const compArchs = Object.keys(archDeckComp).sort();
+  new Chart(document.getElementById('chart-deck-comp'), {
+    type: 'bar',
+    data: {
+      labels: compArchs.map(a => archLabels[a] || a),
+      datasets: compTypes.map((t, i) => ({
+        label: t.charAt(0).toUpperCase() + t.slice(1),
+        data: compArchs.map(a => archDeckComp[a][t] || 0),
+        backgroundColor: ['#ff3b4f','#4488ff','#ffaa33','#55557a','#22cc88'][i]
+      }))
+    },
+    options: { responsive:true, plugins:{legend:{labels:{color:'#888',font:{size:10}}}}, scales:{x:{stacked:true,ticks:{color:'#888'}},y:{stacked:true,ticks:{color:'#888'},grid:{color:'#1a1a2e'}}} }
+  });
+
+  // === DEAD ZONES - positions reached but archetype has 0 moves ===
+  const posReached = {};
+  profiles.forEach(p => { posReached[p.id] = new Set(); });
+  turns.forEach(t => {
+    const m = matches.find(x => x.id === t.match_id);
+    if (!m) return;
+    if (posReached[m.player1_id]) posReached[m.player1_id].add(t.new_position);
+    if (posReached[m.player2_id]) posReached[m.player2_id].add(t.new_position);
+  });
+
+  // Build tech-from lookup from techMap
+  const techFrom = {};
+  Object.values(techMap).forEach(t => { techFrom[t.from_position] = (techFrom[t.from_position] || 0) + 1; });
+
+  let dzHtml = '<div style="overflow-x:auto;"><table><thead><tr><th>Archetype</th><th>Position</th><th>Times Reached</th><th>Moves in Deck</th><th>Status</th></tr></thead><tbody>';
+  let deadZoneCount = 0;
+  profiles.forEach(p => {
+    const myTechs = new Set(stacks.filter(s => s.profile_id === p.id).map(s => s.technique_id));
+    const reached = posReached[p.id] || new Set();
+    
+    reached.forEach(posId => {
+      // Count how many techniques this player has from this position
+      let movesHere = 0;
+      Object.values(techMap).forEach(t => {
+        if (t.from_position === posId && myTechs.has(t.id)) movesHere++;
+      });
+      
+      if (movesHere <= 1) {
+        // Count how many times they were at this position
+        let timesHere = 0;
+        turns.forEach(t => {
+          const m = matches.find(x => x.id === t.match_id);
+          if (!m) return;
+          if ((m.player1_id === p.id || m.player2_id === p.id) && t.new_position === posId) timesHere++;
+        });
+        
+        if (timesHere >= 2) {
+          const posName = (posMap[posId]?.name || posId).replace(/ \(.*\)/,'');
+          const c = archColors[p.archetype] || '#888';
+          const severity = movesHere === 0 ? 'tag-dis' : 'tag-def';
+          dzHtml += `<tr>
+            <td style="color:${c};font-weight:600">${archLabels[p.archetype]}</td>
+            <td>${posName}</td>
+            <td style="font-family:'JetBrains Mono';text-align:center">${timesHere}</td>
+            <td style="font-family:'JetBrains Mono';text-align:center;color:${movesHere===0?'var(--accent)':'var(--gold)'}">${movesHere}</td>
+            <td><span class="tag ${severity}">${movesHere===0?'DEAD':'WEAK'}</span></td>
+          </tr>`;
+          deadZoneCount++;
+        }
+      }
+    });
+  });
+  if (deadZoneCount === 0) dzHtml += '<tr><td colspan="5" style="text-align:center;color:var(--dim)">No dead zones found</td></tr>';
+  dzHtml += '</tbody></table></div>';
+  document.getElementById('dead-zones').innerHTML = dzHtml;
+
+  // === MOVE FREQUENCY ===
+  const moveFreq = {};
+  turns.forEach(t => {
+    [t.player1_move, t.player2_move].forEach(mid => {
+      if (mid) moveFreq[mid] = (moveFreq[mid] || 0) + 1;
+    });
+  });
+  const topFreq = Object.entries(moveFreq).sort((a,b) => b[1] - a[1]).slice(0, 20);
+  let mfHtml = '<table><thead><tr><th>Move</th><th>Type</th><th>Times Played</th><th>% of All Moves</th></tr></thead><tbody>';
+  const totalMoves = turns.length * 2;
+  topFreq.forEach(([mid, count]) => {
+    const t = techMap[mid];
+    const name = t?.name || mid;
+    const type = t?.type || 'counter';
+    const pct = (count / totalMoves * 100).toFixed(1);
+    const typeColor = {'submission':'var(--accent)','sweep':'var(--blue)','takedown':'var(--gold)','transition':'var(--dim)','escape':'var(--green)'}[type] || 'var(--dim)';
+    mfHtml += `<tr>
+      <td style="font-weight:500">${name}</td>
+      <td><span style="color:${typeColor};font-family:'JetBrains Mono';font-size:10px;text-transform:uppercase">${type}</span></td>
+      <td style="font-family:'JetBrains Mono';text-align:center">${count}</td>
+      <td style="font-family:'JetBrains Mono';text-align:center">${pct}%</td>
+    </tr>`;
+  });
+  mfHtml += '</tbody></table>';
+  document.getElementById('move-frequency').innerHTML = mfHtml;
+}
+
+// Load and render
+loadData().then(render).catch(e => {
+  document.body.innerHTML += `<div style="color:red;padding:20px">Error: ${e.message}</div>`;
+});
+</script>
+</body>
+</html>

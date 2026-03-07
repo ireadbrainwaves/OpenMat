@@ -1,0 +1,11 @@
+match_id,p1_name,p1_archetype,p2_name,p2_archetype,winner,method,turns,p1_points,p2_points,p1_elo_delta,p2_elo_delta
+94395c38-ff3f-450e-a80e-34c2aec8cff0,Marcelo,submission_hunter,Rodolfo,pressure_passer,Draw,Draw,30,0,0,0,0
+f980f846-1d01-491e-b72d-37480f8e4662,Miyao,guard_puller,Rodolfo,pressure_passer,Draw,Draw,30,0,0,0,0
+1089bf0d-2df0-4b54-a5b4-9dd4b761f6d9,Iron Mike,wrestler,Rodolfo,pressure_passer,Draw,Draw,30,0,0,0,0
+23b11ac3-8ed0-4dd2-b249-f13bdcbaa2fa,Ruotolo,scrambler,Rodolfo,pressure_passer,Draw,Draw,30,0,0,0,0
+2d017eba-d754-4d1f-b91f-c910b164c970,Miyao,guard_puller,Rodolfo,pressure_passer,Draw,Draw,30,0,0,0,0
+0b140365-a943-454a-85c4-2ce3ca4ffd54,Marcelo,submission_hunter,Haisam,leg_locker,Draw,Draw,30,0,0,0,0
+f0daba5a-a64b-4142-ae87-5b9ea58eeff5,Rodolfo,pressure_passer,Marcelo,submission_hunter,Marcelo,Submission - Standing Guillotine,3,0,0,-16,16
+9f2b06c8-312d-4c4c-9c09-2b6c6814702b,Miyao,guard_puller,Rodolfo,pressure_passer,Draw,Draw,30,0,0,0,0
+fe5b1dcb-4024-405d-8063-255cd3918627,Haisam,leg_locker,Marcelo,submission_hunter,Marcelo,Submission - Standing Guillotine,2,0,0,-15,15
+3acfe858-9189-458d-9a89-7ae560ff97b8,Miyao,guard_puller,Marcelo,submission_hunter,Draw,Draw,30,0,0,0,0

@@ -1,0 +1,592 @@
+{
+  "_meta": {
+    "description": "Archetype-Position Status Matrix for Open Mat",
+    "statuses": {
+      "dominant": "Full offensive options - subs, transitions, sweeps, takedowns",
+      "neutral": "Both offensive and defensive options available",
+      "defending": "Escapes and counters only",
+      "disadvantaged": "Limited escapes, counters have reduced effectiveness"
+    }
+  },
+
+  "matrix": {
+
+    "standing_neutral": {
+      "wrestler": "dominant",
+      "guard_puller": "neutral",
+      "leg_locker": "neutral",
+      "pressure_passer": "neutral",
+      "submission_hunter": "neutral",
+      "scrambler": "dominant"
+    },
+    "standing_overhook_underhook": {
+      "wrestler": "dominant",
+      "guard_puller": "defending",
+      "leg_locker": "defending",
+      "pressure_passer": "neutral",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+
+    "clinch_collar_tie": {
+      "wrestler": "dominant",
+      "guard_puller": "neutral",
+      "leg_locker": "neutral",
+      "pressure_passer": "neutral",
+      "submission_hunter": "neutral",
+      "scrambler": "dominant"
+    },
+    "clinch_bodylock": {
+      "wrestler": "dominant",
+      "guard_puller": "defending",
+      "leg_locker": "defending",
+      "pressure_passer": "dominant",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+    "clinch_double_underhooks": {
+      "wrestler": "dominant",
+      "guard_puller": "defending",
+      "leg_locker": "defending",
+      "pressure_passer": "dominant",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+    "clinch_single_collar_tie": {
+      "wrestler": "dominant",
+      "guard_puller": "neutral",
+      "leg_locker": "neutral",
+      "pressure_passer": "neutral",
+      "submission_hunter": "neutral",
+      "scrambler": "dominant"
+    },
+    "clinch_front_headlock": {
+      "wrestler": "dominant",
+      "guard_puller": "neutral",
+      "leg_locker": "neutral",
+      "pressure_passer": "neutral",
+      "submission_hunter": "dominant",
+      "scrambler": "dominant"
+    },
+    "clinch_russian_tie": {
+      "wrestler": "dominant",
+      "guard_puller": "defending",
+      "leg_locker": "neutral",
+      "pressure_passer": "neutral",
+      "submission_hunter": "neutral",
+      "scrambler": "dominant"
+    },
+    "clinch_rear_bodylock": {
+      "wrestler": "dominant",
+      "guard_puller": "defending",
+      "leg_locker": "defending",
+      "pressure_passer": "dominant",
+      "submission_hunter": "neutral",
+      "scrambler": "dominant"
+    },
+
+    "guard_closed": {
+      "wrestler": "defending",
+      "guard_puller": "dominant",
+      "leg_locker": "neutral",
+      "pressure_passer": "defending",
+      "submission_hunter": "dominant",
+      "scrambler": "neutral"
+    },
+    "guard_closed_top": {
+      "wrestler": "neutral",
+      "guard_puller": "disadvantaged",
+      "leg_locker": "defending",
+      "pressure_passer": "neutral",
+      "submission_hunter": "defending",
+      "scrambler": "neutral"
+    },
+    "guard_open_bottom": {
+      "wrestler": "defending",
+      "guard_puller": "neutral",
+      "leg_locker": "neutral",
+      "pressure_passer": "defending",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+    "guard_half_bottom": {
+      "wrestler": "defending",
+      "guard_puller": "dominant",
+      "leg_locker": "neutral",
+      "pressure_passer": "defending",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+    "guard_half_top": {
+      "wrestler": "dominant",
+      "guard_puller": "defending",
+      "leg_locker": "neutral",
+      "pressure_passer": "dominant",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+    "guard_butterfly_bottom": {
+      "wrestler": "defending",
+      "guard_puller": "dominant",
+      "leg_locker": "dominant",
+      "pressure_passer": "defending",
+      "submission_hunter": "neutral",
+      "scrambler": "dominant"
+    },
+    "guard_de_la_riva_bottom": {
+      "wrestler": "disadvantaged",
+      "guard_puller": "dominant",
+      "leg_locker": "dominant",
+      "pressure_passer": "defending",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+    "guard_reverse_de_la_riva_bottom": {
+      "wrestler": "disadvantaged",
+      "guard_puller": "dominant",
+      "leg_locker": "dominant",
+      "pressure_passer": "defending",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+    "guard_single_leg_x_bottom": {
+      "wrestler": "disadvantaged",
+      "guard_puller": "dominant",
+      "leg_locker": "dominant",
+      "pressure_passer": "defending",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+    "guard_x_guard_bottom": {
+      "wrestler": "disadvantaged",
+      "guard_puller": "dominant",
+      "leg_locker": "dominant",
+      "pressure_passer": "defending",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+    "guard_rubber_bottom": {
+      "wrestler": "disadvantaged",
+      "guard_puller": "dominant",
+      "leg_locker": "neutral",
+      "pressure_passer": "disadvantaged",
+      "submission_hunter": "dominant",
+      "scrambler": "neutral"
+    },
+    "guard_z_guard_bottom": {
+      "wrestler": "defending",
+      "guard_puller": "dominant",
+      "leg_locker": "neutral",
+      "pressure_passer": "defending",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+    "guard_lasso_bottom": {
+      "wrestler": "disadvantaged",
+      "guard_puller": "dominant",
+      "leg_locker": "neutral",
+      "pressure_passer": "defending",
+      "submission_hunter": "dominant",
+      "scrambler": "neutral"
+    },
+    "guard_spider_bottom": {
+      "wrestler": "disadvantaged",
+      "guard_puller": "dominant",
+      "leg_locker": "neutral",
+      "pressure_passer": "defending",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+    "guard_worm_bottom": {
+      "wrestler": "disadvantaged",
+      "guard_puller": "dominant",
+      "leg_locker": "neutral",
+      "pressure_passer": "defending",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+    "guard_deep_half_bottom": {
+      "wrestler": "defending",
+      "guard_puller": "dominant",
+      "leg_locker": "dominant",
+      "pressure_passer": "defending",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+    "guard_deep_half_top": {
+      "wrestler": "neutral",
+      "guard_puller": "defending",
+      "leg_locker": "neutral",
+      "pressure_passer": "neutral",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+    "guard_inverted_bottom": {
+      "wrestler": "disadvantaged",
+      "guard_puller": "dominant",
+      "leg_locker": "dominant",
+      "pressure_passer": "disadvantaged",
+      "submission_hunter": "neutral",
+      "scrambler": "dominant"
+    },
+    "guard_lockdown_bottom": {
+      "wrestler": "defending",
+      "guard_puller": "dominant",
+      "leg_locker": "neutral",
+      "pressure_passer": "defending",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+
+    "passing_hq": {
+      "wrestler": "dominant",
+      "guard_puller": "defending",
+      "leg_locker": "defending",
+      "pressure_passer": "dominant",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+    "passing_standing_open": {
+      "wrestler": "dominant",
+      "guard_puller": "defending",
+      "leg_locker": "neutral",
+      "pressure_passer": "dominant",
+      "submission_hunter": "neutral",
+      "scrambler": "dominant"
+    },
+    "passing_smash_pass": {
+      "wrestler": "dominant",
+      "guard_puller": "defending",
+      "leg_locker": "defending",
+      "pressure_passer": "dominant",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+    "passing_knee_slice": {
+      "wrestler": "neutral",
+      "guard_puller": "defending",
+      "leg_locker": "defending",
+      "pressure_passer": "dominant",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+    "passing_leg_drag": {
+      "wrestler": "neutral",
+      "guard_puller": "defending",
+      "leg_locker": "defending",
+      "pressure_passer": "dominant",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+    "passing_body_fold": {
+      "wrestler": "dominant",
+      "guard_puller": "defending",
+      "leg_locker": "defending",
+      "pressure_passer": "dominant",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+    "passing_torreando": {
+      "wrestler": "neutral",
+      "guard_puller": "defending",
+      "leg_locker": "defending",
+      "pressure_passer": "dominant",
+      "submission_hunter": "neutral",
+      "scrambler": "dominant"
+    },
+    "passing_long_step": {
+      "wrestler": "neutral",
+      "guard_puller": "defending",
+      "leg_locker": "neutral",
+      "pressure_passer": "dominant",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+
+    "side_control_top": {
+      "wrestler": "dominant",
+      "guard_puller": "neutral",
+      "leg_locker": "neutral",
+      "pressure_passer": "dominant",
+      "submission_hunter": "dominant",
+      "scrambler": "neutral"
+    },
+    "side_control_bottom": {
+      "wrestler": "defending",
+      "guard_puller": "defending",
+      "leg_locker": "defending",
+      "pressure_passer": "defending",
+      "submission_hunter": "defending",
+      "scrambler": "defending"
+    },
+    "north_south_top": {
+      "wrestler": "dominant",
+      "guard_puller": "neutral",
+      "leg_locker": "neutral",
+      "pressure_passer": "dominant",
+      "submission_hunter": "dominant",
+      "scrambler": "neutral"
+    },
+    "north_south_bottom": {
+      "wrestler": "defending",
+      "guard_puller": "defending",
+      "leg_locker": "disadvantaged",
+      "pressure_passer": "defending",
+      "submission_hunter": "defending",
+      "scrambler": "defending"
+    },
+    "kesa_gatame_top": {
+      "wrestler": "dominant",
+      "guard_puller": "neutral",
+      "leg_locker": "neutral",
+      "pressure_passer": "dominant",
+      "submission_hunter": "dominant",
+      "scrambler": "neutral"
+    },
+    "kesa_gatame_bottom": {
+      "wrestler": "defending",
+      "guard_puller": "defending",
+      "leg_locker": "disadvantaged",
+      "pressure_passer": "defending",
+      "submission_hunter": "defending",
+      "scrambler": "defending"
+    },
+    "knee_on_belly_top": {
+      "wrestler": "dominant",
+      "guard_puller": "neutral",
+      "leg_locker": "neutral",
+      "pressure_passer": "dominant",
+      "submission_hunter": "dominant",
+      "scrambler": "dominant"
+    },
+    "knee_on_belly_bottom": {
+      "wrestler": "defending",
+      "guard_puller": "defending",
+      "leg_locker": "disadvantaged",
+      "pressure_passer": "defending",
+      "submission_hunter": "defending",
+      "scrambler": "defending"
+    },
+
+    "mount_top": {
+      "wrestler": "dominant",
+      "guard_puller": "neutral",
+      "leg_locker": "neutral",
+      "pressure_passer": "dominant",
+      "submission_hunter": "dominant",
+      "scrambler": "neutral"
+    },
+    "mount_bottom": {
+      "wrestler": "defending",
+      "guard_puller": "defending",
+      "leg_locker": "disadvantaged",
+      "pressure_passer": "defending",
+      "submission_hunter": "defending",
+      "scrambler": "defending"
+    },
+    "mount_high_top": {
+      "wrestler": "dominant",
+      "guard_puller": "neutral",
+      "leg_locker": "neutral",
+      "pressure_passer": "dominant",
+      "submission_hunter": "dominant",
+      "scrambler": "neutral"
+    },
+    "mount_high_bottom": {
+      "wrestler": "disadvantaged",
+      "guard_puller": "disadvantaged",
+      "leg_locker": "disadvantaged",
+      "pressure_passer": "disadvantaged",
+      "submission_hunter": "disadvantaged",
+      "scrambler": "disadvantaged"
+    },
+    "mount_s_mount_top": {
+      "wrestler": "dominant",
+      "guard_puller": "neutral",
+      "leg_locker": "neutral",
+      "pressure_passer": "dominant",
+      "submission_hunter": "dominant",
+      "scrambler": "neutral"
+    },
+    "mount_technical_top": {
+      "wrestler": "dominant",
+      "guard_puller": "neutral",
+      "leg_locker": "neutral",
+      "pressure_passer": "neutral",
+      "submission_hunter": "dominant",
+      "scrambler": "dominant"
+    },
+
+    "back_control_top": {
+      "wrestler": "dominant",
+      "guard_puller": "neutral",
+      "leg_locker": "neutral",
+      "pressure_passer": "neutral",
+      "submission_hunter": "dominant",
+      "scrambler": "dominant"
+    },
+    "back_control_bottom": {
+      "wrestler": "defending",
+      "guard_puller": "defending",
+      "leg_locker": "disadvantaged",
+      "pressure_passer": "defending",
+      "submission_hunter": "defending",
+      "scrambler": "defending"
+    },
+    "back_body_triangle": {
+      "wrestler": "dominant",
+      "guard_puller": "neutral",
+      "leg_locker": "neutral",
+      "pressure_passer": "neutral",
+      "submission_hunter": "dominant",
+      "scrambler": "neutral"
+    },
+    "turtle_top": {
+      "wrestler": "dominant",
+      "guard_puller": "neutral",
+      "leg_locker": "neutral",
+      "pressure_passer": "neutral",
+      "submission_hunter": "dominant",
+      "scrambler": "dominant"
+    },
+    "turtle_bottom": {
+      "wrestler": "neutral",
+      "guard_puller": "defending",
+      "leg_locker": "defending",
+      "pressure_passer": "defending",
+      "submission_hunter": "defending",
+      "scrambler": "neutral"
+    },
+    "crucifix_top": {
+      "wrestler": "dominant",
+      "guard_puller": "neutral",
+      "leg_locker": "neutral",
+      "pressure_passer": "neutral",
+      "submission_hunter": "dominant",
+      "scrambler": "neutral"
+    },
+    "truck_top": {
+      "wrestler": "neutral",
+      "guard_puller": "neutral",
+      "leg_locker": "dominant",
+      "pressure_passer": "neutral",
+      "submission_hunter": "dominant",
+      "scrambler": "dominant"
+    },
+    "truck_bottom": {
+      "wrestler": "defending",
+      "guard_puller": "defending",
+      "leg_locker": "defending",
+      "pressure_passer": "defending",
+      "submission_hunter": "defending",
+      "scrambler": "defending"
+    },
+
+    "leg_entanglement_50_50": {
+      "wrestler": "defending",
+      "guard_puller": "defending",
+      "leg_locker": "dominant",
+      "pressure_passer": "defending",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+    "leg_entanglement_ashi_garami": {
+      "wrestler": "defending",
+      "guard_puller": "defending",
+      "leg_locker": "dominant",
+      "pressure_passer": "defending",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+    "leg_entanglement_outside_ashi": {
+      "wrestler": "defending",
+      "guard_puller": "defending",
+      "leg_locker": "dominant",
+      "pressure_passer": "defending",
+      "submission_hunter": "neutral",
+      "scrambler": "neutral"
+    },
+    "leg_entanglement_inside_sankaku": {
+      "wrestler": "disadvantaged",
+      "guard_puller": "defending",
+      "leg_locker": "dominant",
+      "pressure_passer": "disadvantaged",
+      "submission_hunter": "neutral",
+      "scrambler": "defending"
+    },
+    "leg_entanglement_411": {
+      "wrestler": "disadvantaged",
+      "guard_puller": "defending",
+      "leg_locker": "dominant",
+      "pressure_passer": "disadvantaged",
+      "submission_hunter": "neutral",
+      "scrambler": "defending"
+    },
+    "leg_entanglement_game_over": {
+      "wrestler": "disadvantaged",
+      "guard_puller": "disadvantaged",
+      "leg_locker": "dominant",
+      "pressure_passer": "disadvantaged",
+      "submission_hunter": "neutral",
+      "scrambler": "disadvantaged"
+    },
+    "leg_entanglement_reap": {
+      "wrestler": "disadvantaged",
+      "guard_puller": "defending",
+      "leg_locker": "dominant",
+      "pressure_passer": "disadvantaged",
+      "submission_hunter": "neutral",
+      "scrambler": "defending"
+    },
+
+    "scramble": {
+      "wrestler": "dominant",
+      "guard_puller": "defending",
+      "leg_locker": "neutral",
+      "pressure_passer": "neutral",
+      "submission_hunter": "neutral",
+      "scrambler": "dominant"
+    },
+
+    "defending_clinch": {
+      "wrestler": "neutral",
+      "guard_puller": "defending",
+      "leg_locker": "defending",
+      "pressure_passer": "defending",
+      "submission_hunter": "defending",
+      "scrambler": "neutral"
+    },
+    "defending_passing": {
+      "wrestler": "defending",
+      "guard_puller": "neutral",
+      "leg_locker": "neutral",
+      "pressure_passer": "defending",
+      "submission_hunter": "defending",
+      "scrambler": "neutral"
+    },
+    "defending_leg_entanglement": {
+      "wrestler": "defending",
+      "guard_puller": "defending",
+      "leg_locker": "neutral",
+      "pressure_passer": "defending",
+      "submission_hunter": "defending",
+      "scrambler": "defending"
+    },
+    "defending_back": {
+      "wrestler": "defending",
+      "guard_puller": "defending",
+      "leg_locker": "disadvantaged",
+      "pressure_passer": "defending",
+      "submission_hunter": "defending",
+      "scrambler": "defending"
+    },
+    "defending_mount": {
+      "wrestler": "defending",
+      "guard_puller": "defending",
+      "leg_locker": "disadvantaged",
+      "pressure_passer": "defending",
+      "submission_hunter": "defending",
+      "scrambler": "defending"
+    }
+  }
+}

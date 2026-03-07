@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#08080d">
+<title>Open Mat</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+:root{--bg:#08080d;--card:#111119;--card2:#181824;--border:#252536;--text:#eaeaf2;--dim:#6a6a8a;--accent:#e63946;--blue:#4895ef;--green:#2ec4b6;--gold:#f4a261;--purple:#8b5cf6;--r:14px;}
+html,body,#root{height:100%;width:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;}
+input,button,select{font-family:inherit;}
+::-webkit-scrollbar{width:3px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+@keyframes pulseGlow{0%,100%{box-shadow:0 0 0 0 rgba(230,57,70,.3);}50%{box-shadow:0 0 20px 4px rgba(230,57,70,.15);}}
+@keyframes slideUp{from{opacity:0;transform:translateY(20px);}to{opacity:1;transform:translateY(0);}}
+@keyframes spin{to{transform:rotate(360deg);}}
+.fade-in{animation:fadeIn .3s ease both;}
+.slide-up{animation:slideUp .4s ease both;}
+.spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;display:inline-block;}
+#debug-log{position:fixed;bottom:0;left:0;right:0;max-height:120px;overflow-y:auto;background:rgba(0,0,0,.9);font-family:monospace;font-size:10px;padding:4px 8px;z-index:9999;display:none;color:#888;}
+#debug-log.show{display:block;}
+#debug-log .err{color:#e63946;}
+#debug-log .ok{color:#2ec4b6;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="debug-log"></div>
+<script>
+// === SUPABASE INIT ===
+const SUPABASE_URL = 'https://efsswnwiehpejczlttwr.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVmc3N3bndpZWhwZWpjemx0dHdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MzE0OTgsImV4cCI6MjA4ODQwNzQ5OH0.Bxxm-Jh5my46y63Zy2yWhYOp-5XBsDAWTlGS9Nv2JII';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// Debug logger
+function dbg(msg, type) {
+  const el = document.getElementById('debug-log');
+  const d = document.createElement('div');
+  d.className = type || '';
+  d.textContent = new Date().toLocaleTimeString() + ' ' + msg;
+  el.appendChild(d);
+  el.scrollTop = el.scrollHeight;
+  console.log('[' + (type||'info') + ']', msg);
+}
+// Triple-tap bottom-right to toggle debug
+let tapCount = 0, tapTimer;
+document.addEventListener('click', e => {
+  if (e.clientX > window.innerWidth - 60 && e.clientY > window.innerHeight - 60) {
+    tapCount++;
+    clearTimeout(tapTimer);
+    tapTimer = setTimeout(() => tapCount = 0, 500);
+    if (tapCount >= 3) { document.getElementById('debug-log').classList.toggle('show'); tapCount = 0; }
+  }
+});
+
+// === GRAPH CACHE ===
+const G = { positions: {}, techniques: {}, counters: {}, techFrom: {}, pairMap: {}, matrix: {} };
+const beltOrder = { white:1, blue:2, purple:3, brown:4, black:5 };
+
+async function loadGraph() {
+  dbg('Loading graph...', 'ok');
+  const [p, t, c, m] = await Promise.all([
+    sb.from('positions').select('*'),
+    sb.from('techniques').select('*'),
+    sb.from('counter_techniques').select('*'),
+    sb.from('archetype_position_matrix').select('*')
+  ]);
+  if (p.error) { dbg('Positions error: ' + p.error.message, 'err'); return false; }
+  if (t.error) { dbg('Techniques error: ' + t.error.message, 'err'); return false; }
+  if (c.error) { dbg('Counters error: ' + c.error.message, 'err'); return false; }
+
+  p.data.forEach(pos => {
+    G.positions[pos.id] = pos;
+    if (pos.pair_id) { G.pairMap[pos.id] = pos.pair_id; G.pairMap[pos.pair_id] = pos.id; }
+  });
+  t.data.forEach(tech => {
+    G.techniques[tech.id] = tech;
+    if (!G.techFrom[tech.from_position]) G.techFrom[tech.from_position] = [];
+    G.techFrom[tech.from_position].push(tech);
+  });
+  c.data.forEach(ct => G.counters[ct.id] = ct);
+
+  // Load archetype matrix
+  if (m.data) {
+    m.data.forEach(row => {
+      if (!G.matrix[row.position_id]) G.matrix[row.position_id] = {};
+      G.matrix[row.position_id][row.archetype] = row.status;
+    });
+    dbg('Matrix loaded: ' + m.data.length + ' entries', 'ok');
+  }
+
+  dbg('Graph loaded: ' + p.data.length + ' pos, ' + t.data.length + ' tech, ' + c.data.length + ' counters', 'ok');
+  return true;
+}
+
+// Get archetype status at a position
+function getStatus(posId, archetype) {
+  return (G.matrix[posId] && G.matrix[posId][archetype]) || 'neutral';
+}
+
+function getMoves(posId, belt, deck, overtime, archetype) {
+  const lvl = beltOrder[belt] || 1;
+  const status = archetype ? getStatus(posId, archetype) : 'neutral';
+
+  return (G.techFrom[posId] || []).filter(t => {
+    if ((beltOrder[t.belt_unlock] || 1) > lvl) return false;
+    if (!deck.includes(t.id)) return false;
+    if (overtime && t.type !== 'submission') return false;
+
+    // Filter by archetype status
+    if (status === 'defending') {
+      // Only escapes allowed
+      if (t.type !== 'escape') return false;
+    } else if (status === 'disadvantaged') {
+      // Only escapes, and fewer of them
+      if (t.type !== 'escape') return false;
+    }
+    // dominant and neutral = all moves available
+
+    return true;
+  });
+}
+</script>
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
+
+// === CONSTANTS ===
+const BELT_COLORS = { white:'#fff', blue:'#4895ef', purple:'#8b5cf6', brown:'#a0522d', black:'#333' };
+const TYPE_COLORS = { submission:'#e63946', sweep:'#4895ef', transition:'#6a6a8a', takedown:'#f4a261', escape:'#2ec4b6' };
+const FC = { standing:'#e8b84b', clinch:'#e88a4b', guard:'#4895ef', passing:'#8b5cf6', side_control:'#e84b6a', mount:'#ff4444', back:'#f97316', leg_entanglement:'#10b981', transition:'#6b7280' };
+const AM = {
+  wrestler:      { icon:'\u{1F93C}', label:'Wrestler',         desc:'Takedowns, top pressure' },
+  guard_puller:  { icon:'\u{1F6E1}', label:'Guard Puller',     desc:'Sweeps, bottom subs' },
+  leg_locker:    { icon:'\u{1F9B5}', label:'Leg Locker',       desc:'Heel hooks, entanglements' },
+  pressure_passer:{ icon:'\u{1F3CB}', label:'Pressure Passer', desc:'Smash pass, heavy top' },
+  submission_hunter:{ icon:'\u{1F3AF}', label:'Sub Hunter',    desc:'Submission chains' },
+  scrambler:     { icon:'\u26A1',     label:'Scrambler',        desc:'Transitions, speed' }
+};
+
+// === STYLES ===
+const css = {
+  app: { height:'100%', width:'100%', maxWidth:430, margin:'0 auto', position:'relative', overflow:'hidden', display:'flex', flexDirection:'column' },
+  screen: { flex:1, overflowY:'auto', padding:'0 20px 100px', WebkitOverflowScrolling:'touch' },
+  nav: { position:'absolute', bottom:0, left:0, right:0, height:76, background:'linear-gradient(180deg, transparent, #08080d 30%)', display:'flex', justifyContent:'space-around', alignItems:'center', padding:'0 10px 12px', zIndex:10 },
+  btn: (on) => ({ display:'flex', alignItems:'center', justifyContent:'center', padding:'14px 24px', borderRadius:12, fontWeight:600, fontSize:14, border:on?'none':'1px solid var(--border)', background:on?'var(--accent)':'var(--card2)', color:on?'#fff':'var(--text)', cursor:'pointer', width:'100%', fontFamily:'inherit', opacity:on?1:0.9 }),
+  input: { width:'100%', padding:'14px 16px', borderRadius:12, border:'1px solid var(--border)', background:'var(--card)', color:'var(--text)', fontSize:14, outline:'none', marginBottom:8 },
+  card: { background:'var(--card)', border:'1px solid var(--border)', borderRadius:14, padding:16, marginBottom:10 },
+  section: { fontFamily:'DM Mono, monospace', fontSize:9, textTransform:'uppercase', letterSpacing:2, color:'var(--dim)', margin:'20px 0 10px' },
+  center: { display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100%', gap:12 },
+};
+
+// === NAV ===
+function Nav({ cur, go }) {
+  return <div style={css.nav}>
+    {[['home','\u{1F3E0}','Home'],['match','\u2694\uFE0F','Match'],['deck','\u{1F4CB}','Deck'],['gym','\u{1F3DF}\uFE0F','Gym']].map(([id,ic,lb]) =>
+      <div key={id} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3, fontSize:9, color:cur===id?'var(--accent)':'var(--dim)', cursor:'pointer' }} onClick={() => go(id)}>
+        <span style={{ fontSize:18 }}>{ic}</span>{lb}
+      </div>
+    )}
+  </div>;
+}
+
+// === AUTH ===
+function AuthScreen({ onDone }) {
+  const [mode, setMode] = useState('login');
+  const [email, setEmail] = useState('');
+  const [pw, setPw] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function go() {
+    setErr(''); setBusy(true);
+    try {
+      const fn = mode === 'signup' ? sb.auth.signUp.bind(sb.auth) : sb.auth.signInWithPassword.bind(sb.auth);
+      const { data, error } = await fn({ email, password: pw });
+      if (error) throw error;
+      dbg('Auth success: ' + data.user?.id, 'ok');
+      onDone(data.user);
+    } catch (e) { setErr(e.message); dbg('Auth error: ' + e.message, 'err'); }
+    setBusy(false);
+  }
+
+  return <div style={{ ...css.screen, padding:'0 20px', display:'flex', flexDirection:'column', justifyContent:'center', minHeight:'100vh' }}>
+    <div style={{ textAlign:'center', marginBottom:32 }} className="fade-in">
+      <div style={{ width:64, height:64, background:'var(--accent)', borderRadius:16, display:'inline-flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:22, marginBottom:16 }}>OM</div>
+      <div style={{ fontSize:28, fontWeight:700, letterSpacing:-1 }}>Open Mat</div>
+      <div style={{ fontSize:13, color:'var(--dim)', marginTop:4 }}>Build your game. Test it against anyone.</div>
+    </div>
+    <input style={css.input} type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
+    <input style={css.input} type="password" placeholder="Password (min 6 chars)" value={pw} onChange={e => setPw(e.target.value)} onKeyDown={e => e.key === 'Enter' && go()} />
+    {err && <div style={{ color:'var(--accent)', fontSize:12, marginBottom:8 }}>{err}</div>}
+    <button style={{ ...css.btn(true), marginBottom:8 }} onClick={go} disabled={busy}>
+      {busy ? <span className="spinner" /> : mode === 'login' ? 'Log In' : 'Sign Up'}
+    </button>
+    <button style={{ ...css.btn(false), fontSize:12 }} onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}>
+      {mode === 'login' ? "Don't have an account? Sign Up" : 'Already have an account? Log In'}
+    </button>
+  </div>;
+}
+
+// === ONBOARDING ===
+function OnboardScreen({ user, onDone }) {
+  const [name, setName] = useState('');
+  const [belt, setBelt] = useState('white');
+  const [arch, setArch] = useState('wrestler');
+  const [gym, setGym] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function go() {
+    if (!name.trim()) return;
+    setBusy(true); setErr('');
+    try {
+      const uname = name.toLowerCase().replace(/[^a-z0-9]/g, '') + Math.random().toString(36).slice(2, 6);
+      dbg('Updating profile: ' + uname, 'ok');
+
+      const { error: profErr } = await sb.from('profiles').update({
+        display_name: name.trim(), belt, archetype: arch, username: uname
+      }).eq('id', user.id);
+      if (profErr) throw profErr;
+
+      // Create gym
+      if (gym.trim()) {
+        const slug = gym.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-') + '-' + Math.random().toString(36).slice(2, 5);
+        const { data: gd, error: ge } = await sb.from('gyms').insert({ name: gym.trim(), slug, created_by: user.id }).select().single();
+        if (gd) {
+          await sb.from('profiles').update({ gym_id: gd.id }).eq('id', user.id);
+          await sb.from('gym_memberships').insert({ profile_id: user.id, gym_id: gd.id, role: 'owner' });
+          dbg('Gym created: ' + gd.id, 'ok');
+        }
+      }
+
+      // Seed deck
+      const allTech = Object.values(G.techniques);
+      const starters = allTech.filter(t =>
+        t.archetype_affinity && t.archetype_affinity.includes(arch) &&
+        (beltOrder[t.belt_unlock] || 1) <= (beltOrder[belt] || 1)
+      ).slice(0, 25);
+      dbg('Seeding ' + starters.length + ' techniques for ' + arch, 'ok');
+
+      if (starters.length > 0) {
+        const { error: deckErr } = await sb.from('player_move_stacks').upsert(
+          starters.map(t => ({ profile_id: user.id, technique_id: t.id, is_starter: true })),
+          { onConflict: 'profile_id,technique_id' }
+        );
+        if (deckErr) dbg('Deck seed error: ' + deckErr.message, 'err');
+      }
+
+      dbg('Onboarding complete', 'ok');
+      onDone();
+    } catch (e) { setErr(e.message); dbg('Onboard error: ' + e.message, 'err'); }
+    setBusy(false);
+  }
+
+  return <div style={{ ...css.screen, padding:'0 20px 40px' }}>
+    <div style={{ textAlign:'center', padding:'30px 0 20px' }} className="fade-in">
+      <div style={{ fontSize:22, fontWeight:700 }}>Set Up Your Game</div>
+      <div style={{ fontSize:12, color:'var(--dim)', marginTop:4 }}>This seeds your starting move stack</div>
+    </div>
+    <div style={css.section}>Your name</div>
+    <input style={css.input} placeholder="Display name" value={name} onChange={e => setName(e.target.value)} />
+    <div style={css.section}>Belt rank</div>
+    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:8, marginBottom:4 }}>
+      {['white','blue','purple','brown'].map(b =>
+        <div key={b} onClick={() => setBelt(b)} style={{ padding:'12px 8px', borderRadius:12, border:'2px solid ' + (belt===b?'var(--accent)':'var(--border)'), background:belt===b?'rgba(230,57,70,.06)':'transparent', textAlign:'center', cursor:'pointer' }}>
+          <div style={{ width:18, height:18, borderRadius:'50%', background:BELT_COLORS[b], margin:'0 auto 6px', border:b==='white'?'1px solid #444':'none' }} />
+          <div style={{ fontSize:11, fontWeight:600, textTransform:'capitalize' }}>{b}</div>
+        </div>
+      )}
+    </div>
+    <div style={css.section}>Your style</div>
+    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:4 }}>
+      {Object.entries(AM).map(([id, m]) =>
+        <div key={id} onClick={() => setArch(id)} style={{ padding:'14px 12px', borderRadius:12, border:'2px solid ' + (arch===id?'var(--accent)':'var(--border)'), background:arch===id?'rgba(230,57,70,.06)':'transparent', cursor:'pointer' }}>
+          <div style={{ fontSize:20, marginBottom:4 }}>{m.icon}</div>
+          <div style={{ fontWeight:600, fontSize:12 }}>{m.label}</div>
+          <div style={{ fontSize:10, color:'var(--dim)', marginTop:2 }}>{m.desc}</div>
+        </div>
+      )}
+    </div>
+    <div style={css.section}>Your gym (optional)</div>
+    <input style={css.input} placeholder="Gym name" value={gym} onChange={e => setGym(e.target.value)} />
+    {err && <div style={{ color:'var(--accent)', fontSize:12, marginBottom:8 }}>{err}</div>}
+    <button style={{ ...css.btn(true), marginTop:12 }} onClick={go} disabled={busy || !name.trim()}>
+      {busy ? <span className="spinner" /> : 'Start Training \u2192'}
+    </button>
+  </div>;
+}
+
+// === HOME ===
+function HomeScreen({ profile, onMatch }) {
+  const [history, setHistory] = useState([]);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await sb.from('matches')
+        .select('*, p1:profiles!matches_player1_id_fkey(display_name), p2:profiles!matches_player2_id_fkey(display_name)')
+        .or('player1_id.eq.' + profile.id + ',player2_id.eq.' + profile.id)
+        .eq('status', 'finished')
+        .order('finished_at', { ascending: false }).limit(10);
+      if (data) setHistory(data);
+    })();
+  }, [profile.id]);
+
+  const wr = profile.matches_played > 0 ? Math.round(profile.matches_won / profile.matches_played * 100) : 0;
+
+  return <div style={css.screen}>
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'16px 0' }}>
+      <div>
+        <div style={{ fontSize:13, color:'var(--dim)' }}>Welcome back</div>
+        <div style={{ fontSize:22, fontWeight:700 }}>{profile.display_name}</div>
+      </div>
+      <div style={{ width:44, height:44, borderRadius:12, background:'var(--card2)', border:'2px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20 }}>
+        {AM[profile.archetype]?.icon}
+      </div>
+    </div>
+
+    <div style={{ background:'linear-gradient(135deg, var(--accent), #c1121f)', borderRadius:14, padding:20, marginBottom:12, position:'relative', overflow:'hidden' }}>
+      <div style={{ position:'absolute', top:-20, right:-20, width:100, height:100, borderRadius:'50%', background:'rgba(255,255,255,.08)' }} />
+      <div style={{ fontSize:10, textTransform:'uppercase', letterSpacing:2, opacity:.7 }}>Elo Rating</div>
+      <div style={{ fontSize:42, fontWeight:700, letterSpacing:-2, margin:'4px 0' }}>{(profile.elo || 1200).toLocaleString()}</div>
+      <div style={{ fontSize:12, opacity:.8 }}>{AM[profile.archetype]?.label} - {profile.belt} belt</div>
+    </div>
+
+    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:12 }}>
+      {[[profile.matches_played,'Matches'],[wr+'%','Win Rate','var(--green)'],[profile.submissions_earned,'Subs','var(--accent)']].map(([v,l,c],i) =>
+        <div key={i} style={{ background:'var(--card)', border:'1px solid var(--border)', borderRadius:12, padding:'14px 12px', textAlign:'center' }}>
+          <div style={{ fontSize:22, fontWeight:700, color:c||'var(--text)' }}>{v}</div>
+          <div style={{ fontSize:9, color:'var(--dim)', textTransform:'uppercase', letterSpacing:1 }}>{l}</div>
+        </div>
+      )}
+    </div>
+
+    <button style={{ ...css.btn(true), fontSize:16, marginBottom:16 }} onClick={onMatch}>{'\u{1F919}'} Find a Match</button>
+
+    <div style={css.section}>Recent Matches</div>
+    {history.map(m => {
+      const won = m.winner_id === profile.id;
+      const opp = m.player1_id === profile.id ? m.p2?.display_name : m.p1?.display_name;
+      const delta = m.player1_id === profile.id ? m.player1_elo_delta : m.player2_elo_delta;
+      return <div key={m.id} style={{ display:'flex', alignItems:'center', padding:12, background:'var(--card)', border:'1px solid var(--border)', borderRadius:12, marginBottom:6, gap:12 }}>
+        <div style={{ width:36, height:36, borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:12, background:won?'rgba(46,196,182,.15)':'rgba(230,57,70,.15)', color:won?'var(--green)':'var(--accent)' }}>{won?'W':'L'}</div>
+        <div style={{ flex:1 }}>
+          <div style={{ fontWeight:600, fontSize:13 }}>vs. {opp || 'Unknown'}</div>
+          <div style={{ fontSize:10, color:'var(--dim)', marginTop:2 }}>{m.win_method} - {m.current_turn} turns</div>
+        </div>
+        <div style={{ fontFamily:'DM Mono', fontSize:12, fontWeight:600, color:won?'var(--green)':'var(--accent)' }}>{delta > 0 ? '+' : ''}{delta}</div>
+      </div>;
+    })}
+    {history.length === 0 && <div style={{ textAlign:'center', padding:20, color:'var(--dim)', fontSize:13 }}>No matches yet. Time to roll!</div>}
+  </div>;
+}
+
+// === LOBBY ===
+function LobbyScreen({ profile, onStart }) {
+  const [players, setPlayers] = useState([]);
+  const [invites, setInvites] = useState([]);
+  const [activeMatch, setActiveMatch] = useState(null);
+  const [sending, setSending] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const { data: p } = await sb.from('profiles').select('*').neq('id', profile.id).order('elo', { ascending: false }).limit(20);
+      if (p) setPlayers(p);
+      const { data: inv } = await sb.from('match_invites').select('*, sender:profiles!match_invites_from_profile_id_fkey(display_name,archetype,belt,elo)').eq('to_profile_id', profile.id).eq('status', 'pending');
+      if (inv) setInvites(inv);
+      const { data: am } = await sb.from('matches').select('*').or('player1_id.eq.' + profile.id + ',player2_id.eq.' + profile.id).in('status', ['active','overtime']).limit(1);
+      if (am && am.length > 0) setActiveMatch(am[0]);
+    })();
+
+    // Listen for incoming invites
+    const ch1 = sb.channel('lobby-invites-' + profile.id).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'match_invites', filter: 'to_profile_id=eq.' + profile.id }, payload => {
+      dbg('Invite received!', 'ok');
+      setInvites(prev => [...prev, payload.new]);
+    }).subscribe();
+
+    // Listen for matches where I'm a player (catches when opponent accepts my challenge)
+    const ch2 = sb.channel('lobby-matches-' + profile.id).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'matches' }, async (payload) => {
+      const m = payload.new;
+      if ((m.player1_id === profile.id || m.player2_id === profile.id) && m.status === 'active') {
+        dbg('Match started! Auto-joining: ' + m.id, 'ok');
+        onStart(m.id);
+      }
+    }).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches' }, async (payload) => {
+      const m = payload.new;
+      if ((m.player1_id === profile.id || m.player2_id === profile.id) && m.status === 'active') {
+        dbg('Match activated! Auto-joining: ' + m.id, 'ok');
+        onStart(m.id);
+      }
+    }).subscribe();
+
+    // Also poll every 3 seconds as backup
+    const poll = setInterval(async () => {
+      const { data: am } = await sb.from('matches').select('id').or('player1_id.eq.' + profile.id + ',player2_id.eq.' + profile.id).in('status', ['active','overtime']).limit(1);
+      if (am && am.length > 0 && !activeMatch) {
+        dbg('Poll found active match: ' + am[0].id, 'ok');
+        setActiveMatch(am[0]);
+        onStart(am[0].id);
+      }
+    }, 3000);
+
+    return () => { sb.removeChannel(ch1); sb.removeChannel(ch2); clearInterval(poll); };
+  }, [profile.id]);
+
+  async function challenge(oppId) {
+    setSending(oppId);
+    dbg('Sending challenge to ' + oppId, 'ok');
+    await sb.from('match_invites').insert({ from_profile_id: profile.id, to_profile_id: oppId, match_type: 'ranked' });
+    setSending(null);
+  }
+
+  async function accept(inv) {
+    dbg('Accepting invite ' + inv.id, 'ok');
+    const { data, error } = await sb.rpc('create_match_from_invite', { p_invite_id: inv.id });
+    if (error) { dbg('Accept error: ' + error.message, 'err'); return; }
+    dbg('Match created: ' + data, 'ok');
+    onStart(data);
+  }
+
+  return <div style={css.screen}>
+    <div style={{ textAlign:'center', padding:'24px 0 16px' }}>
+      <div style={{ fontSize:22, fontWeight:700 }}>Find a Match</div>
+      <div style={{ fontSize:12, color:'var(--dim)', marginTop:4 }}>Challenge a partner or rejoin</div>
+    </div>
+
+    {activeMatch && <div style={{ ...css.card, border:'1px solid var(--green)', cursor:'pointer' }} onClick={() => onStart(activeMatch.id)}>
+      <div style={{ fontSize:12, fontWeight:600, color:'var(--green)', marginBottom:4 }}>Active Match - Tap to Rejoin</div>
+      <div style={{ fontSize:11, color:'var(--dim)' }}>Turn {activeMatch.current_turn}/{activeMatch.max_turns}</div>
+    </div>}
+
+    {invites.length > 0 && <>
+      <div style={css.section}>Incoming Challenges</div>
+      {invites.map(inv =>
+        <div key={inv.id} style={{ ...css.card, display:'flex', alignItems:'center', gap:12 }}>
+          <div style={{ flex:1 }}>
+            <div style={{ fontWeight:600, fontSize:13 }}>{inv.sender?.display_name || 'Someone'} wants to roll!</div>
+            <div style={{ fontSize:10, color:'var(--dim)' }}>{AM[inv.sender?.archetype]?.label} - {inv.sender?.elo} Elo</div>
+          </div>
+          <button style={{ ...css.btn(true), width:'auto', padding:'8px 16px', fontSize:12 }} onClick={() => accept(inv)}>Accept</button>
+        </div>
+      )}
+    </>}
+
+    <div style={css.section}>Players</div>
+    {players.map(p =>
+      <div key={p.id} style={{ display:'flex', alignItems:'center', padding:12, background:'var(--card)', border:'1px solid var(--border)', borderRadius:12, marginBottom:6, gap:12 }}>
+        <div style={{ width:36, height:36, borderRadius:8, background:'var(--card2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>{AM[p.archetype]?.icon}</div>
+        <div style={{ flex:1 }}>
+          <div style={{ fontWeight:600, fontSize:13 }}>{p.display_name}</div>
+          <div style={{ fontSize:10, color:'var(--dim)' }}>{AM[p.archetype]?.label} - {p.belt} - {p.elo}</div>
+        </div>
+        <button style={{ ...css.btn(true), width:'auto', padding:'6px 14px', fontSize:11 }} onClick={() => challenge(p.id)} disabled={sending === p.id}>
+          {sending === p.id ? <span className="spinner" style={{ width:14, height:14 }} /> : 'Challenge'}
+        </button>
+      </div>
+    )}
+    {players.length === 0 && <div style={{ textAlign:'center', padding:20, color:'var(--dim)', fontSize:13 }}>No other players yet. Invite your training partners!</div>}
+  </div>;
+}
+
+// === MATCH ===
+function MatchScreen({ profile, matchId, onEnd }) {
+  const [match, setMatch] = useState(null);
+  const [opp, setOpp] = useState(null);
+  const [deck, setDeck] = useState([]);
+  const [sel, setSel] = useState(null);
+  const [moves, setMoves] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [lastTurn, setLastTurn] = useState(null);
+  const [turnHistory, setTurnHistory] = useState([]);
+  const [isBait, setIsBait] = useState(false);
+  const [feintMove, setFeintMove] = useState(null);
+  const [showFeintPicker, setShowFeintPicker] = useState(false);
+  const [subSel, setSubSel] = useState(null);
+
+  const amP1 = match?.player1_id === profile.id;
+  const myPos = amP1 ? match?.player1_position : match?.player2_position;
+  const myPts = amP1 ? match?.player1_points : match?.player2_points;
+  const oppPts = amP1 ? match?.player2_points : match?.player1_points;
+  const myLocked = amP1 ? match?.player1_move_locked : match?.player2_move_locked;
+  const oppLocked = amP1 ? match?.player2_move_locked : match?.player1_move_locked;
+  const myStanceLocked = amP1 ? match?.player1_stance_locked : match?.player2_stance_locked;
+  const oppStanceLocked = amP1 ? match?.player2_stance_locked : match?.player1_stance_locked;
+  const oppStance = amP1 ? match?.player2_stance : match?.player1_stance;
+  const myFeints = amP1 ? match?.player1_feints_remaining : match?.player2_feints_remaining;
+  const phase = match?.turn_phase || 'stance';
+  const pos = G.positions[myPos];
+
+  // Initial load
+  useEffect(() => {
+    (async () => {
+      dbg('Loading match ' + matchId, 'ok');
+      const { data: m, error: me } = await sb.from('matches').select('*').eq('id', matchId).single();
+      if (me) { dbg('Match load error: ' + me.message, 'err'); return; }
+      setMatch(m);
+      dbg('Match loaded: turn ' + m.current_turn + ' phase ' + m.turn_phase + ' status ' + m.status, 'ok');
+
+      const oppId = m.player1_id === profile.id ? m.player2_id : m.player1_id;
+      const { data: o } = await sb.from('profiles').select('*').eq('id', oppId).single();
+      if (o) setOpp(o);
+
+      const { data: d } = await sb.from('player_move_stacks').select('technique_id').eq('profile_id', profile.id);
+      if (d) { setDeck(d.map(x => x.technique_id)); dbg('Deck loaded: ' + d.length + ' techniques', 'ok'); }
+
+      const { data: t } = await sb.from('match_turns').select('*').eq('match_id', matchId).order('turn_number');
+      if (t) { setTurnHistory(t); if (t.length > 0) setLastTurn(t[t.length - 1]); }
+    })();
+  }, [matchId]);
+
+  // Realtime
+  useEffect(() => {
+    const ch = sb.channel('match-' + matchId).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches', filter: 'id=eq.' + matchId }, async (payload) => {
+      dbg('Match update: turn ' + payload.new.current_turn + ' phase ' + payload.new.turn_phase + ' status ' + payload.new.status, 'ok');
+      setMatch(payload.new);
+      setSel(null); setIsBait(false); setFeintMove(null); setShowFeintPicker(false);
+
+      const { data: t } = await sb.from('match_turns').select('*').eq('match_id', matchId).order('turn_number');
+      if (t) { setTurnHistory(t); if (t.length > 0) setLastTurn(t[t.length - 1]); }
+
+      if (payload.new.status === 'finished') {
+        dbg('Match finished!', 'ok');
+        setTimeout(() => onEnd(payload.new), 1500);
+      }
+    }).subscribe();
+    return () => sb.removeChannel(ch);
+  }, [matchId]);
+
+  // Update moves - filter based on archetype status at this position
+  const myStatus = getStatus(myPos, profile.archetype);
+  
+  useEffect(() => {
+    if (myPos && deck.length > 0) {
+      let m = getMoves(myPos, profile.belt, deck, match?.status === 'overtime', profile.archetype);
+      
+      // If we got zero moves from our position, check the defending positions too
+      if (m.length === 0) {
+        const defPositions = ['defending_clinch','defending_passing','defending_leg_entanglement','defending_back','defending_mount'];
+        for (const dp of defPositions) {
+          const defMoves = getMoves(dp, profile.belt, deck, false, profile.archetype);
+          if (defMoves.length > 0) { m = defMoves; break; }
+        }
+      }
+      
+      setMoves(m);
+      dbg('Position: ' + myPos + ' [' + myStatus + ' for ' + profile.archetype + '] - ' + m.length + ' moves', 'ok');
+    }
+  }, [myPos, deck, match?.status, match?.player1_position, match?.player2_position]);
+
+  // Opponent tendency (last 3 stances)
+  const oppTendency = turnHistory.slice(-3).map(t => amP1 ? t.player2_stance : t.player1_stance).filter(Boolean);
+
+  async function lockStance(stance) {
+    if (busy) return;
+    setBusy(true);
+    dbg('Submitting stance: ' + stance, 'ok');
+    const { data, error } = await sb.rpc('submit_stance', { p_match_id: matchId, p_stance: stance });
+    if (error) dbg('Stance error: ' + error.message, 'err');
+    else dbg('Stance submitted', 'ok');
+    setBusy(false);
+  }
+
+  async function lockMove() {
+    if (!sel || busy) return;
+    setBusy(true);
+    dbg('Submitting move: ' + sel.id + (isBait ? ' BAIT' : '') + (feintMove ? ' FEINT:' + feintMove : ''), 'ok');
+    const { data, error } = await sb.rpc('submit_move', {
+      p_match_id: matchId, p_technique_id: sel.id,
+      p_is_counter: sel.isCounter || false,
+      p_is_bait: isBait, p_feint_move: feintMove
+    });
+    if (error) dbg('Move error: ' + error.message, 'err');
+    else dbg('Move submitted', 'ok');
+    setBusy(false);
+  }
+
+  if (!match || !opp) return <div style={css.center}><span className="spinner" style={{ width:30, height:30 }} /><div style={{ color:'var(--dim)', fontSize:13 }}>Loading match...</div></div>;
+
+  const counters = Object.values(G.counters).slice(0, 10);
+  const stanceIcons = { attack: '\u2694\uFE0F', defend: '\u{1F6E1}\uFE0F', setup: '\u{1F501}' };
+  const stanceColors = { attack: 'var(--accent)', defend: 'var(--blue)', setup: 'var(--gold)' };
+
+  return <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column' }}>
+    {/* HUD */}
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 20px' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+        <div style={{ width:32, height:32, borderRadius:8, background:'rgba(72,149,239,.2)', color:'var(--blue)', border:'1px solid rgba(72,149,239,.3)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700 }}>{profile.display_name?.[0]}</div>
+        <div><div style={{ fontSize:11, fontWeight:600 }}>{profile.display_name}</div><div style={{ fontSize:9, color:'var(--dim)' }}>{profile.belt}</div></div>
+      </div>
+      <div style={{ fontFamily:'DM Mono', fontSize:28, fontWeight:700 }}>
+        <span style={{ color:'var(--blue)' }}>{myPts || 0}</span>
+        <span style={{ color:'var(--dim)', margin:'0 6px', fontSize:20 }}>:</span>
+        <span style={{ color:'var(--accent)' }}>{oppPts || 0}</span>
+      </div>
+      <div style={{ display:'flex', alignItems:'center', gap:8, textAlign:'right' }}>
+        <div><div style={{ fontSize:11, fontWeight:600 }}>{opp.display_name}</div><div style={{ fontSize:9, color:'var(--dim)' }}>{opp.belt}</div></div>
+        <div style={{ width:32, height:32, borderRadius:8, background:'rgba(230,57,70,.2)', color:'var(--accent)', border:'1px solid rgba(230,57,70,.3)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700 }}>{opp.display_name?.[0]}</div>
+      </div>
+    </div>
+
+    {/* Turn + Phase bar */}
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'4px 20px' }}>
+      <span style={{ fontFamily:'DM Mono', fontSize:10, color:'var(--dim)' }}>Turn {match.current_turn}/{match.max_turns}</span>
+      <div style={{ padding:'2px 8px', borderRadius:4, fontSize:9, fontWeight:600, fontFamily:'DM Mono', background: phase === 'stance' ? 'rgba(244,162,97,.15)' : phase === 'move' ? 'rgba(230,57,70,.15)' : phase === 'sub_minigame' ? 'rgba(230,57,70,.25)' : 'rgba(106,106,138,.15)', color: phase === 'stance' ? 'var(--gold)' : phase === 'move' ? 'var(--accent)' : phase === 'sub_minigame' ? 'var(--accent)' : 'var(--dim)' }}>
+        {phase === 'stance' ? 'PICK STANCE' : phase === 'move' ? 'PICK MOVE' : phase === 'sub_minigame' ? '\u{1F4A5} SUBMISSION!' : 'RESOLVING'}
+      </div>
+      <div style={{ display:'flex', gap:1 }}>
+        {Array.from({ length: Math.min(15, match.max_turns) }, (_, i) =>
+          <div key={i} style={{ width:5, height:3, borderRadius:1, background: i < match.current_turn ? 'var(--accent)' : i === match.current_turn ? 'var(--gold)' : 'var(--border)' }} />
+        )}
+      </div>
+    </div>
+
+    {/* GP + Chain bars */}
+    {(() => {
+      const myGp = amP1 ? (match.player1_gp ?? 10) : (match.player2_gp ?? 10);
+      const oppGp = amP1 ? (match.player2_gp ?? 10) : (match.player1_gp ?? 10);
+      const myChain = amP1 ? (match.player1_chain ?? 0) : (match.player2_chain ?? 0);
+      const oppChain = amP1 ? (match.player2_chain ?? 0) : (match.player1_chain ?? 0);
+      const gpPct = (myGp / 12) * 100;
+      const oppGpPct = (oppGp / 12) * 100;
+      const gpColor = myGp <= 2 ? 'var(--accent)' : myGp <= 5 ? 'var(--gold)' : 'var(--green)';
+      const oppGpColor = oppGp <= 2 ? 'var(--accent)' : oppGp <= 5 ? 'var(--gold)' : 'var(--green)';
+      return <div style={{ padding:'2px 20px', display:'flex', gap:10, alignItems:'center' }}>
+        <div style={{ flex:1 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:2 }}>
+            <span style={{ fontFamily:'DM Mono', fontSize:8, color:gpColor, fontWeight:700 }}>{'\u{1F44A}'} GP {myGp}/12</span>
+            {myChain >= 2 && <span style={{ fontFamily:'DM Mono', fontSize:8, color:'var(--gold)', fontWeight:700 }}>{'\u{1F525}'.repeat(Math.min(myChain, 5))} {myChain}-CHAIN</span>}
+          </div>
+          <div style={{ height:4, borderRadius:2, background:'var(--border)', overflow:'hidden' }}>
+            <div style={{ height:'100%', width:gpPct+'%', background:gpColor, borderRadius:2, transition:'width .3s' }} />
+          </div>
+        </div>
+        <div style={{ fontSize:8, color:'var(--dim)', fontFamily:'DM Mono' }}>vs</div>
+        <div style={{ flex:1 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:2 }}>
+            <span style={{ fontFamily:'DM Mono', fontSize:8, color:oppGpColor, fontWeight:700 }}>GP {oppGp}/12</span>
+            {oppChain >= 2 && <span style={{ fontFamily:'DM Mono', fontSize:8, color:'var(--gold)' }}>{'\u{1F525}'.repeat(Math.min(oppChain, 5))}</span>}
+          </div>
+          <div style={{ height:4, borderRadius:2, background:'var(--border)', overflow:'hidden' }}>
+            <div style={{ height:'100%', width:oppGpPct+'%', background:oppGpColor, borderRadius:2, transition:'width .3s' }} />
+          </div>
+        </div>
+      </div>;
+    })()}
+
+    {/* Opponent tendency tracker */}
+    {oppTendency.length > 0 && <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:'4px 20px' }}>
+      <span style={{ fontSize:9, color:'var(--dim)', fontFamily:'DM Mono' }}>OPP TENDENCY:</span>
+      {oppTendency.map((s, i) => <span key={i} style={{ fontSize:14 }}>{stanceIcons[s] || '?'}</span>)}
+    </div>}
+
+    {/* Position */}
+    {(() => {
+      const statusColors = { dominant:'var(--green)', neutral:'var(--dim)', defending:'var(--gold)', disadvantaged:'var(--accent)' };
+      const statusBg = { dominant:'rgba(46,196,182,.12)', neutral:'rgba(106,106,138,.1)', defending:'rgba(244,162,97,.12)', disadvantaged:'rgba(230,57,70,.12)' };
+      const statusBorder = { dominant:'rgba(46,196,182,.3)', neutral:'var(--border)', defending:'rgba(244,162,97,.3)', disadvantaged:'rgba(230,57,70,.3)' };
+      const statusEmoji = { dominant:'\u{1F525}', neutral:'\u2696\uFE0F', defending:'\u{1F6E1}\uFE0F', disadvantaged:'\u26A0\uFE0F' };
+      const st = myStatus;
+      const oppPos = amP1 ? match?.player2_position : match?.player1_position;
+      const oppPosData = G.positions[oppPos];
+      const oppStatus = getStatus(oppPos, opp?.archetype || 'wrestler');
+
+      return <div style={{ margin:'8px 20px', padding:'16px', background:'var(--card)', border:'1px solid ' + (statusBorder[st] || 'var(--border)'), borderRadius:16, textAlign:'center', position:'relative', minHeight:100, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
+        {pos?.is_submission_position && st === 'dominant' && <div style={{ position:'absolute', top:10, right:10, fontFamily:'DM Mono', fontSize:9, padding:'3px 8px', borderRadius:6, background:'rgba(230,57,70,.12)', color:'var(--accent)' }}>SUB THREAT</div>}
+        <div style={{ position:'absolute', top:10, left:10, fontFamily:'DM Mono', fontSize:9, padding:'3px 8px', borderRadius:6, background: statusBg[st], color: statusColors[st], fontWeight:600 }}>
+          {statusEmoji[st]} {st.toUpperCase()}
+        </div>
+        <div style={{ fontSize:26, marginBottom:6 }}>{'\u{1F94B}'}</div>
+        <div style={{ fontSize:14, fontWeight:700 }}>{pos?.name?.replace(/ \(.*\)/, '')}</div>
+        <div style={{ fontFamily:'DM Mono', fontSize:9, textTransform:'uppercase', letterSpacing:2, color: FC[pos?.family] || 'var(--dim)', marginTop:2 }}>
+          {pos?.family?.replace('_', ' ')} - {AM[profile.archetype]?.label}
+        </div>
+        {(st === 'defending' || st === 'disadvantaged') && oppPosData && <div style={{ fontSize:10, color: statusColors[st], marginTop:4 }}>Opponent: {oppPosData?.name?.replace(/ \(.*\)/, '')} ({oppStatus})</div>}
+        {st === 'disadvantaged' && <div style={{ fontSize:9, color:'var(--accent)', marginTop:2, fontStyle:'italic' }}>Limited options - get out of here!</div>}
+        {lastTurn && <div style={{ marginTop:6, fontSize:10, color:'var(--gold)', fontWeight:500 }} className="fade-in">{lastTurn.description}</div>}
+      </div>;
+    })()}
+
+    {/* ========== PHASE 1: STANCE SELECTION ========== */}
+    {phase === 'stance' && !myStanceLocked && match.status !== 'finished' && <div style={{ padding:'0 20px', paddingBottom:90 }}>
+      <div style={css.section}>Choose Your Stance</div>
+      <div style={{ display:'flex', gap:8, marginBottom:12 }}>
+        {[['attack','Attack','Go offensive - costs GP per move','\u2694\uFE0F'],['defend','Defend','Counter free + 15% defense bonus','\u{1F6E1}\uFE0F'],['setup','Setup','Recover +2 GP - grip fight','\u{1F501}']].map(([id,label,desc,icon]) =>
+          <div key={id} onClick={() => !busy && lockStance(id)}
+            style={{ flex:1, padding:'16px 8px', borderRadius:14, border:'2px solid var(--border)', background:'var(--card)', textAlign:'center', cursor:'pointer', transition:'all .2s' }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = stanceColors[id]}
+            onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+            <div style={{ fontSize:28, marginBottom:6 }}>{icon}</div>
+            <div style={{ fontSize:13, fontWeight:700, color: stanceColors[id] }}>{label}</div>
+            <div style={{ fontSize:9, color:'var(--dim)', marginTop:4, lineHeight:1.3 }}>{desc}</div>
+          </div>
+        )}
+      </div>
+      {busy && <div style={{ textAlign:'center' }}><span className="spinner" /></div>}
+    </div>}
+
+    {/* Waiting for opponent stance */}
+    {phase === 'stance' && myStanceLocked && <div style={{ textAlign:'center', padding:20 }}>
+      <span className="spinner" style={{ display:'block', margin:'0 auto 8px' }} />
+      <div style={{ fontSize:13, fontWeight:600, color:'var(--dim)' }}>Stance locked - waiting for opponent...</div>
+    </div>}
+
+    {/* ========== PHASE 2: MOVE SELECTION (stances revealed) ========== */}
+    {phase === 'move' && !myLocked && match.status !== 'finished' && <div style={{ padding:'0 20px', flex:1, overflowY:'auto', paddingBottom:100 }}>
+
+      {/* Revealed stances */}
+      <div style={{ display:'flex', justifyContent:'center', gap:16, marginBottom:12, padding:'8px', background:'var(--card2)', borderRadius:10 }}>
+        <div style={{ textAlign:'center' }}>
+          <div style={{ fontSize:9, color:'var(--dim)', fontFamily:'DM Mono' }}>YOU</div>
+          <div style={{ fontSize:20 }}>{stanceIcons[amP1 ? match.player1_stance : match.player2_stance]}</div>
+          <div style={{ fontSize:10, fontWeight:600, color: stanceColors[amP1 ? match.player1_stance : match.player2_stance], textTransform:'capitalize' }}>{amP1 ? match.player1_stance : match.player2_stance}</div>
+        </div>
+        <div style={{ fontSize:14, color:'var(--dim)', alignSelf:'center' }}>vs</div>
+        <div style={{ textAlign:'center' }}>
+          <div style={{ fontSize:9, color:'var(--dim)', fontFamily:'DM Mono' }}>OPP</div>
+          <div style={{ fontSize:20 }}>{stanceIcons[oppStance]}</div>
+          <div style={{ fontSize:10, fontWeight:600, color: stanceColors[oppStance], textTransform:'capitalize' }}>{oppStance}</div>
+        </div>
+      </div>
+
+      {/* Bait + Feint toggles */}
+      <div style={{ display:'flex', gap:6, marginBottom:10 }}>
+        <div onClick={() => setIsBait(!isBait)}
+          style={{ flex:1, padding:'8px', borderRadius:8, border:'1px solid ' + (isBait ? 'var(--gold)' : 'var(--border)'), background: isBait ? 'rgba(244,162,97,.08)' : 'var(--card)', textAlign:'center', cursor:'pointer' }}>
+          <div style={{ fontSize:12, fontWeight:600, color: isBait ? 'var(--gold)' : 'var(--dim)' }}>{'\u{1F3AD}'} Bait</div>
+          <div style={{ fontSize:8, color:'var(--dim)', marginTop:2 }}>Stance was a lie</div>
+        </div>
+        <div onClick={() => myFeints > 0 && setShowFeintPicker(!showFeintPicker)}
+          style={{ flex:1, padding:'8px', borderRadius:8, border:'1px solid ' + (feintMove ? 'var(--purple)' : 'var(--border)'), background: feintMove ? 'rgba(139,92,246,.08)' : 'var(--card)', textAlign:'center', cursor: myFeints > 0 ? 'pointer' : 'default', opacity: myFeints > 0 ? 1 : 0.4 }}>
+          <div style={{ fontSize:12, fontWeight:600, color: feintMove ? 'var(--purple)' : 'var(--dim)' }}>{'\u{1F47B}'} Feint ({myFeints || 0})</div>
+          <div style={{ fontSize:8, color:'var(--dim)', marginTop:2 }}>{feintMove ? G.techniques[feintMove]?.name : 'Show fake move'}</div>
+        </div>
+      </div>
+
+      {/* Feint picker */}
+      {showFeintPicker && <div style={{ marginBottom:10, padding:10, background:'var(--card)', border:'1px solid var(--purple)', borderRadius:10, maxHeight:120, overflowY:'auto' }}>
+        <div style={{ fontSize:9, color:'var(--purple)', fontFamily:'DM Mono', marginBottom:6 }}>PICK FAKE MOVE TO SHOW</div>
+        {moves.filter(m => m.type === 'submission').map(m =>
+          <div key={m.id} onClick={() => { setFeintMove(m.id); setShowFeintPicker(false); }}
+            style={{ padding:'6px 8px', borderRadius:6, fontSize:11, cursor:'pointer', marginBottom:3, background: feintMove === m.id ? 'rgba(139,92,246,.15)' : 'var(--card2)', color: feintMove === m.id ? 'var(--purple)' : 'var(--text)' }}>
+            {m.name}
+          </div>
+        )}
+        {moves.filter(m => m.type !== 'submission').slice(0, 5).map(m =>
+          <div key={m.id} onClick={() => { setFeintMove(m.id); setShowFeintPicker(false); }}
+            style={{ padding:'6px 8px', borderRadius:6, fontSize:11, cursor:'pointer', marginBottom:3, background: feintMove === m.id ? 'rgba(139,92,246,.15)' : 'var(--card2)', color: feintMove === m.id ? 'var(--purple)' : 'var(--text)' }}>
+            {m.name}
+          </div>
+        )}
+        <div onClick={() => { setFeintMove(null); setShowFeintPicker(false); }}
+          style={{ padding:'6px 8px', borderRadius:6, fontSize:11, cursor:'pointer', color:'var(--dim)' }}>Cancel feint</div>
+      </div>}
+
+      {/* Move list */}
+      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+        <span style={{ fontFamily:'DM Mono', fontSize:9, textTransform:'uppercase', letterSpacing:2, color:'var(--dim)' }}>Your Moves</span>
+        <span style={{ fontFamily:'DM Mono', fontSize:10, color:'var(--dim)' }}>{moves.length}</span>
+      </div>
+
+      {moves.map(m => {
+        const myGp = amP1 ? (match.player1_gp ?? 10) : (match.player2_gp ?? 10);
+        const gpCost = m.gp_cost || ({'submission':3,'sweep':2,'takedown':2,'transition':1,'escape':1}[m.type] || 1);
+        const canAfford = myGp >= gpCost;
+        return <div key={m.id} onClick={() => canAfford && setSel({ id: m.id, isCounter: false })}
+          style={{ background: sel?.id === m.id ? 'rgba(230,57,70,.06)' : 'var(--card)', border: '1px solid ' + (sel?.id === m.id ? 'var(--accent)' : 'var(--border)'), borderRadius:12, padding:'11px 14px', marginBottom:5, display:'flex', alignItems:'center', justifyContent:'space-between', cursor: canAfford ? 'pointer' : 'default', opacity: canAfford ? 1 : 0.35 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <div style={{ width:6, height:6, borderRadius:'50%', background: TYPE_COLORS[m.type] || 'var(--dim)' }} />
+            <div>
+              <div style={{ fontSize:13, fontWeight:500 }}>{m.name}</div>
+              <div style={{ fontSize:10, color:'var(--dim)' }}>{m.to_position ? G.positions[m.to_position]?.name?.replace(/ \(.*\)/, '') : 'SUBMISSION'}</div>
+            </div>
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <span style={{ fontFamily:'DM Mono', fontSize:9, padding:'2px 5px', borderRadius:4, background: gpCost >= 3 ? 'rgba(230,57,70,.12)' : gpCost >= 2 ? 'rgba(244,162,97,.12)' : 'rgba(106,106,138,.08)', color: gpCost >= 3 ? 'var(--accent)' : gpCost >= 2 ? 'var(--gold)' : 'var(--dim)', fontWeight:700 }}>{gpCost}GP</span>
+            {[1,2,3,4,5].map(d => <div key={d} style={{ width:4, height:4, borderRadius:'50%', background: d <= m.difficulty ? 'var(--gold)' : 'var(--border)' }} />)}
+            {m.points_awarded > 0 && <span style={{ fontFamily:'DM Mono', fontSize:10, color:'var(--gold)' }}>+{m.points_awarded}</span>}
+          </div>
+        </div>;
+      })}
+
+      <div style={{ ...css.section, marginTop:10 }}>Counters</div>
+      <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginBottom:16 }}>
+        {counters.map(c =>
+          <div key={c.id} onClick={() => setSel({ id: c.id, isCounter: true })}
+            style={{ padding:'6px 10px', borderRadius:8, fontSize:10, fontWeight:500, cursor:'pointer',
+              background: sel?.id === c.id ? 'rgba(46,196,182,.1)' : 'var(--card2)',
+              border: '1px solid ' + (sel?.id === c.id ? 'var(--green)' : 'var(--border)'),
+              color: sel?.id === c.id ? 'var(--green)' : 'var(--dim)' }}>
+            {c.name}
+          </div>
+        )}
+      </div>
+    </div>}
+
+    {/* Waiting for opponent move */}
+    {phase === 'move' && myLocked && match.status !== 'finished' && <div style={{ textAlign:'center', padding:20 }}>
+      <span className="spinner" style={{ display:'block', margin:'0 auto 8px' }} />
+      <div style={{ fontSize:13, fontWeight:600, color:'var(--dim)' }}>Move locked - waiting for opponent...</div>
+    </div>}
+
+    {/* Resolving */}
+    {phase === 'resolving' && <div style={{ textAlign:'center', padding:30 }} className="fade-in">
+      <div style={{ fontSize:24, marginBottom:8 }}>{'\u23F3'}</div>
+      <div style={{ fontSize:14, fontWeight:600 }}>Resolving...</div>
+    </div>}
+
+    {/* ========== SUB MINIGAME PHASE ========== */}
+    {phase === 'sub_minigame' && match.sub_minigame_active && (() => {
+      const isAttacker = match.sub_attacker_id === profile.id;
+      const subTech = G.techniques[match.sub_technique_id];
+      const myGp = amP1 ? (match.player1_gp ?? 10) : (match.player2_gp ?? 10);
+      const myLk = isAttacker ? match.sub_attacker_locked : match.sub_defender_locked;
+      const oppLk = isAttacker ? match.sub_defender_locked : match.sub_attacker_locked;
+
+      const attOptions = [
+        { id:'squeeze', label:'Squeeze', desc:'Commit fully (2 GP)', icon:'\u{1F4AA}', cost:2, color:'var(--accent)' },
+        { id:'adjust', label:'Adjust', desc:'Reposition grip (1 GP)', icon:'\u{1F504}', cost:1, color:'var(--gold)' },
+        { id:'transition_sub', label:'Chain Sub', desc:'Switch submission (1 GP)', icon:'\u26D3\uFE0F', cost:1, color:'var(--purple)' },
+      ];
+
+      const defOptions = [
+        { id:'technical_escape', label:'Tech Escape', desc:'Strip the grip (1 GP)', icon:'\u{1F3C3}', cost:1, color:'var(--green)' },
+        { id:'explode', label:'Explode', desc:'All-out escape (2 GP)', icon:'\u{1F4A5}', cost:2, color:'var(--gold)' },
+        { id:'survive', label:'Survive', desc:'Weather the storm (1 GP)', icon:'\u{1F6E1}\uFE0F', cost:1, color:'var(--dim)' },
+        { id:'sweep_scramble', label:'Sweep', desc:'Escape + position (2 GP)', icon:'\u{1F300}', cost:2, color:'var(--blue)' },
+        { id:'reversal_sub', label:'Reversal!', desc:'Counter-submit (3 GP)', icon:'\u26A1', cost:3, color:'var(--accent)' },
+      ];
+
+      const options = isAttacker ? attOptions : defOptions;
+
+      return <div style={{ padding:'0 20px', paddingBottom:100 }} className="fade-in">
+        <div style={{ textAlign:'center', marginBottom:12, padding:16, background:'rgba(230,57,70,.08)', borderRadius:12, border:'1px solid rgba(230,57,70,.2)' }}>
+          <div style={{ fontSize:11, fontFamily:'DM Mono', color:'var(--accent)', marginBottom:4, fontWeight:700 }}>{'\u{1F4A5}'} SUBMISSION LOCKED IN</div>
+          <div style={{ fontSize:18, fontWeight:700 }}>{subTech?.name || 'Submission'}</div>
+          <div style={{ fontSize:11, color:'var(--dim)', marginTop:4 }}>
+            {isAttacker ? 'You are attacking — finish the sub!' : 'You are defending — escape or survive!'}
+          </div>
+          <div style={{ fontFamily:'DM Mono', fontSize:9, color:'var(--dim)', marginTop:6 }}>
+            Phase {(match.sub_tighten_turns || 0) + 1}/5 | Squeezes: {match.sub_squeeze_count || 0} | Survives: {match.sub_survive_count || 0}
+          </div>
+        </div>
+
+        {!myLk && <div>
+          <div style={{ fontFamily:'DM Mono', fontSize:9, color:'var(--dim)', marginBottom:8, textTransform:'uppercase', letterSpacing:2 }}>
+            {isAttacker ? 'Attacker Options' : 'Defender Options'}
+          </div>
+          {options.map(o => {
+            const canAfford = myGp >= o.cost;
+            return <div key={o.id} onClick={() => canAfford && setSubSel(o.id)}
+              style={{ background: subSel === o.id ? 'rgba(230,57,70,.06)' : 'var(--card)', border:'1px solid ' + (subSel === o.id ? o.color : 'var(--border)'), borderRadius:12, padding:'12px 14px', marginBottom:6, display:'flex', alignItems:'center', justifyContent:'space-between', cursor: canAfford ? 'pointer' : 'default', opacity: canAfford ? 1 : 0.35 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <div style={{ fontSize:20 }}>{o.icon}</div>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:600, color: subSel === o.id ? o.color : 'var(--text)' }}>{o.label}</div>
+                  <div style={{ fontSize:10, color:'var(--dim)' }}>{o.desc}</div>
+                </div>
+              </div>
+              <span style={{ fontFamily:'DM Mono', fontSize:10, color: o.cost >= 3 ? 'var(--accent)' : 'var(--gold)', fontWeight:700 }}>{o.cost}GP</span>
+            </div>;
+          })}
+        </div>}
+
+        {myLk && <div style={{ textAlign:'center', padding:20 }}>
+          <span className="spinner" style={{ display:'block', margin:'0 auto 8px' }} />
+          <div style={{ fontSize:13, fontWeight:600, color:'var(--dim)' }}>Choice locked - waiting for opponent...</div>
+        </div>}
+      </div>;
+    })()}
+
+    {/* Lock in button (move phase only) */}
+    {phase === 'move' && !myLocked && match.status !== 'finished' && <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'12px 20px 24px', background:'linear-gradient(180deg, transparent 0%, #08080d 40%)' }}>
+      <button onClick={lockMove} disabled={!sel || busy}
+        style={{ ...css.btn(!!sel), opacity: sel ? 1 : 0.5, fontSize:15, fontWeight:700, animation: sel ? 'pulseGlow 2s infinite' : 'none' }}>
+        {busy ? <span className="spinner" /> : sel ? ('Lock In' + (isBait ? ' (BAIT)' : '') + (feintMove ? ' (FEINT)' : '')) : 'Select a Move'}
+      </button>
+    </div>}
+
+    {/* Lock in button (sub minigame phase) */}
+    {phase === 'sub_minigame' && match.sub_minigame_active && !(match.sub_attacker_id === profile.id ? match.sub_attacker_locked : match.sub_defender_locked) && <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'12px 20px 24px', background:'linear-gradient(180deg, transparent 0%, #08080d 40%)' }}>
+      <button onClick={async () => {
+        if (!subSel || busy) return;
+        setBusy(true);
+        const { error } = await sb.rpc('submit_sub_choice', { p_match_id: matchId, p_choice: subSel });
+        if (error) dbg('Sub choice error: ' + error.message, 'err');
+        else setSubSel(null);
+        setBusy(false);
+      }} disabled={!subSel || busy}
+        style={{ ...css.btn(!!subSel), opacity: subSel ? 1 : 0.5, fontSize:15, fontWeight:700, background: subSel ? 'linear-gradient(135deg, var(--accent), #c0392b)' : undefined }}>
+        {busy ? <span className="spinner" /> : subSel ? '\u{1F4A5} Lock In Choice' : 'Select an Option'}
+      </button>
+    </div>}
+  </div>;
+}
+
+// === RESULT ===
+function ResultScreen({ profile, match, onHome, onRematch }) {
+  const [turns, setTurns] = useState([]);
+  const [oppName, setOppName] = useState('Opponent');
+  const won = match?.winner_id === profile.id;
+  const amP1 = match?.player1_id === profile.id;
+  const delta = amP1 ? match?.player1_elo_delta : match?.player2_elo_delta;
+
+  useEffect(() => {
+    (async () => {
+      const oppId = amP1 ? match.player2_id : match.player1_id;
+      const { data: o } = await sb.from('profiles').select('display_name').eq('id', oppId).single();
+      if (o) setOppName(o.display_name);
+      const { data: t } = await sb.from('match_turns').select('*').eq('match_id', match.id).order('turn_number');
+      if (t) setTurns(t);
+    })();
+  }, [match]);
+
+  return <div style={css.screen} className="slide-up">
+    <div style={{ textAlign:'center', padding:'40px 0 20px' }}>
+      <div style={{ width:80, height:80, borderRadius:'50%', margin:'0 auto 16px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:36, background: won ? 'rgba(46,196,182,.12)' : 'rgba(230,57,70,.12)', border: '2px solid ' + (won ? 'var(--green)' : 'var(--accent)') }}>
+        {won ? '\u{1F3C6}' : '\u{1F624}'}
+      </div>
+      <div style={{ fontSize:28, fontWeight:700, color: won ? 'var(--green)' : 'var(--accent)' }}>{match?.winner_id ? (won ? 'Victory' : 'Defeat') : 'Draw'}</div>
+      <div style={{ fontSize:13, color:'var(--dim)', marginTop:4 }}>{match?.win_method}</div>
+      <div style={{ fontFamily:'DM Mono', fontSize:22, fontWeight:700, marginTop:8, color: delta > 0 ? 'var(--green)' : 'var(--accent)' }}>{delta > 0 ? '+' : ''}{delta} Elo</div>
+    </div>
+    <div style={{ display:'flex', justifyContent:'center', alignItems:'center', gap:20, margin:'16px 0' }}>
+      <div style={{ textAlign:'center' }}><div style={{ fontSize:12, color:'var(--dim)' }}>You</div><div style={{ fontSize:32, fontWeight:700, color:'var(--blue)' }}>{amP1 ? match.player1_points : match.player2_points}</div></div>
+      <div style={{ fontSize:14, color:'var(--dim)', fontWeight:600 }}>vs</div>
+      <div style={{ textAlign:'center' }}><div style={{ fontSize:12, color:'var(--dim)' }}>{oppName}</div><div style={{ fontSize:32, fontWeight:700, color:'var(--accent)' }}>{amP1 ? match.player2_points : match.player1_points}</div></div>
+    </div>
+    <div style={css.section}>Play-by-Play</div>
+    <div style={{ maxHeight:200, overflowY:'auto', marginBottom:16 }}>
+      {turns.map(t =>
+        <div key={t.turn_number} style={{ display:'flex', gap:10, padding:'7px 0', borderBottom:'1px solid var(--border)' }}>
+          <span style={{ fontFamily:'DM Mono', fontSize:10, color: t.result === 'submission_win' ? 'var(--accent)' : 'var(--dim)', width:24, flexShrink:0 }}>T{t.turn_number}</span>
+          <span style={{ fontSize:11, lineHeight:1.4, color: t.result === 'submission_win' ? 'var(--accent)' : 'var(--text)', fontWeight: t.result === 'submission_win' ? 600 : 400 }}>{t.description}</span>
+        </div>
+      )}
+    </div>
+    <div style={{ display:'flex', gap:8 }}>
+      <button style={{ ...css.btn(true), flex:1 }} onClick={onRematch}>Send Rematch</button>
+      <button style={{ ...css.btn(false), flex:1 }} onClick={onHome}>Home</button>
+    </div>
+  </div>;
+}
+
+// === DECK ===
+function DeckScreen({ profile }) {
+  const [deck, setDeck] = useState([]);
+  useEffect(() => {
+    (async () => {
+      const { data } = await sb.from('player_move_stacks').select('technique_id').eq('profile_id', profile.id);
+      if (data) setDeck(data.map(d => d.technique_id));
+    })();
+  }, [profile.id]);
+
+  return <div style={css.screen}>
+    <div style={{ textAlign:'center', padding:'24px 0' }}>
+      <div style={{ width:64, height:64, borderRadius:18, background:'var(--card2)', border:'2px solid var(--accent)', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:26, marginBottom:12 }}>{AM[profile.archetype]?.icon}</div>
+      <div style={{ fontSize:20, fontWeight:700 }}>{profile.display_name}</div>
+      <div style={{ display:'flex', justifyContent:'center', gap:12, marginTop:6, fontSize:12, color:'var(--dim)' }}>
+        <span>{profile.belt} belt</span><span>{AM[profile.archetype]?.label}</span><span>{profile.elo} Elo</span>
+      </div>
+    </div>
+    <div style={css.section}>Move Stack ({deck.length})</div>
+    {deck.map(tid => {
+      const t = G.techniques[tid]; if (!t) return null;
+      return <div key={tid} style={{ display:'flex', alignItems:'center', padding:'10px 12px', background:'var(--card)', border:'1px solid var(--border)', borderRadius:10, marginBottom:4, gap:10 }}>
+        <div style={{ width:6, height:6, borderRadius:'50%', background: BELT_COLORS[t.belt_unlock] || '#fff' }} />
+        <div style={{ flex:1, fontSize:12, fontWeight:500 }}>{t.name}</div>
+        <div style={{ fontFamily:'DM Mono', fontSize:9, color: TYPE_COLORS[t.type] || 'var(--dim)', textTransform:'uppercase' }}>{t.type?.slice(0, 4)}</div>
+      </div>;
+    })}
+  </div>;
+}
+
+// === GYM ===
+function GymScreen({ profile }) {
+  const [gym, setGym] = useState(null);
+  const [members, setMembers] = useState([]);
+  useEffect(() => {
+    (async () => {
+      if (!profile.gym_id) return;
+      const { data: g } = await sb.from('gyms').select('*').eq('id', profile.gym_id).single();
+      if (g) setGym(g);
+      const { data: m } = await sb.from('gym_memberships').select('profile:profiles(*)').eq('gym_id', profile.gym_id);
+      if (m) setMembers(m.map(x => x.profile).filter(Boolean).sort((a, b) => b.elo - a.elo));
+    })();
+  }, [profile.gym_id]);
+
+  if (!gym) return <div style={css.screen}><div style={{ textAlign:'center', padding:'40px 0', color:'var(--dim)' }}>No gym yet. Create one during onboarding or in settings.</div></div>;
+
+  const rc = ['rgba(244,162,97,.15)', 'rgba(168,168,190,.1)', 'rgba(160,82,45,.12)'];
+  const rt = ['#f4a261', '#a8a8be', '#cd7f32'];
+
+  return <div style={css.screen}>
+    <div style={{ textAlign:'center', padding:'24px 0' }}>
+      <div style={{ width:56, height:56, borderRadius:16, background:'var(--card2)', border:'1px solid var(--border)', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:24, marginBottom:10 }}>{'\u{1F94B}'}</div>
+      <div style={{ fontSize:20, fontWeight:700 }}>{gym.name}</div>
+      <div style={{ fontSize:12, color:'var(--dim)', marginTop:3 }}>{members.length} members</div>
+    </div>
+    <div style={css.section}>Leaderboard</div>
+    {members.map((m, i) =>
+      <div key={m.id} style={{ display:'flex', alignItems:'center', padding:12, background:'var(--card)', border:'1px solid var(--border)', borderRadius:12, marginBottom:6, gap:12 }}>
+        <div style={{ width:28, height:28, borderRadius:8, background: i < 3 ? rc[i] : 'var(--card2)', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'DM Mono', fontSize:12, fontWeight:700, color: i < 3 ? rt[i] : 'var(--dim)' }}>{i + 1}</div>
+        <div style={{ width:32, height:32, borderRadius:8, background:'var(--card2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14 }}>{AM[m.archetype]?.icon}</div>
+        <div style={{ flex:1 }}>
+          <div style={{ fontWeight:600, fontSize:13 }}>{m.display_name} {m.id === profile.id ? '\u2B50' : ''}</div>
+          <div style={{ fontSize:10, color:'var(--dim)' }}>{AM[m.archetype]?.label} - {m.belt}</div>
+        </div>
+        <div style={{ fontFamily:'DM Mono', fontSize:14, fontWeight:700 }}>{m.elo}</div>
+      </div>
+    )}
+  </div>;
+}
+
+// === APP ROOT ===
+function App() {
+  const [screen, setScreen] = useState('loading');
+  const [tab, setTab] = useState('home');
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [matchId, setMatchId] = useState(null);
+  const [endedMatch, setEndedMatch] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      dbg('App init...', 'ok');
+      const ok = await loadGraph();
+      if (!ok) { dbg('Graph load failed!', 'err'); setScreen('error'); return; }
+
+      const { data: { session } } = await sb.auth.getSession();
+      if (session?.user) {
+        dbg('Session found: ' + session.user.email, 'ok');
+        setUser(session.user);
+        const { data: p } = await sb.from('profiles').select('*').eq('id', session.user.id).single();
+        if (p) {
+          dbg('Profile: ' + p.display_name + ' (' + p.archetype + ')', 'ok');
+          // Check if onboarded (has a real display_name set)
+          if (p.display_name && p.display_name !== split_part_email(session.user.email)) {
+            setProfile(p); setScreen('main');
+          } else {
+            dbg('Needs onboarding', 'ok');
+            setScreen('onboarding');
+          }
+        } else {
+          dbg('No profile found - needs onboarding', 'ok');
+          setScreen('onboarding');
+        }
+      } else {
+        dbg('No session', 'ok');
+        setScreen('auth');
+      }
+    })();
+
+    const { data: { subscription } } = sb.auth.onAuthStateChange((ev, session) => {
+      if (ev === 'SIGNED_OUT') { setUser(null); setProfile(null); setScreen('auth'); }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  function split_part_email(email) {
+    return email ? email.split('@')[0] : '';
+  }
+
+  async function handleAuth(u) {
+    setUser(u);
+    const { data: p } = await sb.from('profiles').select('*').eq('id', u.id).single();
+    if (p && p.display_name && p.display_name !== split_part_email(u.email)) {
+      setProfile(p); setScreen('main');
+    } else {
+      setScreen('onboarding');
+    }
+  }
+
+  async function handleOnboard() {
+    const { data: p } = await sb.from('profiles').select('*').eq('id', user.id).single();
+    if (p) { setProfile(p); setScreen('main'); dbg('Profile loaded post-onboard: ' + p.display_name, 'ok'); }
+  }
+
+  function startMatch(id) { setMatchId(id); setScreen('match'); }
+
+  function handleMatchEnd(m) {
+    setEndedMatch(m); setScreen('result');
+    (async () => {
+      const { data: p } = await sb.from('profiles').select('*').eq('id', user.id).single();
+      if (p) setProfile(p);
+    })();
+  }
+
+  async function handleRematch() {
+    if (!endedMatch) return;
+    const oppId = endedMatch.player1_id === profile.id ? endedMatch.player2_id : endedMatch.player1_id;
+    dbg('Sending rematch invite to ' + oppId, 'ok');
+    await sb.from('match_invites').insert({ from_profile_id: profile.id, to_profile_id: oppId, match_type: 'ranked' });
+    // Go to lobby where we'll auto-join when they accept
+    setScreen('main'); setTab('match');
+  }
+
+  if (screen === 'loading') return <div style={{ ...css.app, ...css.center }}><span className="spinner" style={{ width:30, height:30 }} /><div style={{ color:'var(--dim)', fontSize:13, marginTop:8 }}>Loading Open Mat...</div></div>;
+  if (screen === 'error') return <div style={{ ...css.app, ...css.center }}><div style={{ color:'var(--accent)', fontSize:16, fontWeight:700 }}>Failed to load</div><div style={{ color:'var(--dim)', fontSize:12 }}>Check console for errors</div></div>;
+  if (screen === 'auth') return <div style={css.app}><AuthScreen onDone={handleAuth} /></div>;
+  if (screen === 'onboarding') return <div style={css.app}><OnboardScreen user={user} onDone={handleOnboard} /></div>;
+  if (screen === 'match' && matchId) return <div style={css.app}><MatchScreen profile={profile} matchId={matchId} onEnd={handleMatchEnd} /></div>;
+  if (screen === 'result' && endedMatch) return <div style={css.app}><ResultScreen profile={profile} match={endedMatch} onHome={() => { setScreen('main'); setTab('home'); }} onRematch={handleRematch} /></div>;
+
+  return <div style={css.app}>
+    {tab === 'home' && <HomeScreen profile={profile} onMatch={() => setTab('match')} />}
+    {tab === 'match' && <LobbyScreen profile={profile} onStart={startMatch} />}
+    {tab === 'deck' && <DeckScreen profile={profile} />}
+    {tab === 'gym' && <GymScreen profile={profile} />}
+    <Nav cur={tab} go={setTab} />
+    <div style={{ position:'absolute', top:8, right:12, zIndex:20 }}>
+      <button onClick={async () => { await sb.auth.signOut(); }} style={{ background:'none', border:'none', color:'var(--dim)', fontSize:10, cursor:'pointer' }}>Sign Out</button>
+    </div>
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
