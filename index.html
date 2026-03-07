@@ -504,14 +504,38 @@ function MatchScreen({ profile, matchId, onEnd }) {
     return () => sb.removeChannel(ch);
   }, [matchId]);
 
-  // Update moves
+  // Update moves - filter based on dominance perspective
   useEffect(() => {
     if (myPos && deck.length > 0) {
-      const m = getMoves(myPos, profile.belt, deck, match?.status === 'overtime');
+      let m = getMoves(myPos, profile.belt, deck, match?.status === 'overtime');
+      
+      // Check dominance perspective
+      const oppPos = amP1 ? match?.player2_position : match?.player1_position;
+      const oppPosData = G.positions[oppPos];
+      const iAmDominant = pos?.is_dominant && (!oppPosData?.is_dominant);
+      const oppIsDominant = oppPosData?.is_dominant && (!pos?.is_dominant);
+      
+      if (oppIsDominant) {
+        // I'm defending - only show escapes from my position
+        // Also check if opponent's position has escapes I can use
+        const escapes = m.filter(t => t.type === 'escape');
+        
+        // Also grab escapes from the opponent's paired position if applicable
+        const pairedPos = G.pairMap[oppPos];
+        if (pairedPos && pairedPos !== myPos) {
+          const pairedMoves = getMoves(pairedPos, profile.belt, deck, false);
+          const pairedEscapes = pairedMoves.filter(t => t.type === 'escape');
+          escapes.push(...pairedEscapes);
+        }
+        
+        m = escapes.length > 0 ? escapes : m.filter(t => t.type === 'escape' || t.type === 'transition');
+        dbg('Defending - filtered to ' + m.length + ' escapes/transitions', 'ok');
+      }
+      
       setMoves(m);
-      dbg('Position: ' + myPos + ' - ' + m.length + ' moves available', 'ok');
+      dbg('Position: ' + myPos + ' (' + (iAmDominant ? 'dominant' : oppIsDominant ? 'defending' : 'neutral') + ') - ' + m.length + ' moves available', 'ok');
     }
-  }, [myPos, deck, match?.status]);
+  }, [myPos, deck, match?.status, match?.player1_position, match?.player2_position]);
 
   // Opponent tendency (last 3 stances)
   const oppTendency = turnHistory.slice(-3).map(t => amP1 ? t.player2_stance : t.player1_stance).filter(Boolean);
@@ -584,15 +608,27 @@ function MatchScreen({ profile, matchId, onEnd }) {
     </div>}
 
     {/* Position */}
-    <div style={{ margin:'8px 20px', padding:'16px', background:'var(--card)', border:'1px solid var(--border)', borderRadius:16, textAlign:'center', position:'relative', minHeight:100, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
-      {pos?.is_submission_position && <div style={{ position:'absolute', top:10, right:10, fontFamily:'DM Mono', fontSize:9, padding:'3px 8px', borderRadius:6, background:'rgba(230,57,70,.12)', color:'var(--accent)' }}>SUB THREAT</div>}
-      <div style={{ fontSize:26, marginBottom:6 }}>{'\u{1F94B}'}</div>
-      <div style={{ fontSize:14, fontWeight:700 }}>{pos?.name?.replace(/ \(.*\)/, '')}</div>
-      <div style={{ fontFamily:'DM Mono', fontSize:9, textTransform:'uppercase', letterSpacing:2, color: FC[pos?.family] || 'var(--dim)', marginTop:2 }}>
-        {pos?.family?.replace('_', ' ')} {pos?.is_dominant ? '- Dominant' : ''}
-      </div>
-      {lastTurn && <div style={{ marginTop:6, fontSize:10, color:'var(--gold)', fontWeight:500 }} className="fade-in">{lastTurn.description}</div>}
-    </div>
+    {(() => {
+      const oppPos = amP1 ? match?.player2_position : match?.player1_position;
+      const oppPosData = G.positions[oppPos];
+      const iAmDominant = pos?.is_dominant && (!oppPosData?.is_dominant);
+      const oppIsDominant = oppPosData?.is_dominant && (!pos?.is_dominant);
+      const posLabel = iAmDominant ? 'DOMINANT' : oppIsDominant ? 'DEFENDING' : 'NEUTRAL';
+      const posColor = iAmDominant ? 'var(--green)' : oppIsDominant ? 'var(--accent)' : 'var(--dim)';
+      const borderColor = iAmDominant ? 'rgba(46,196,182,.3)' : oppIsDominant ? 'rgba(230,57,70,.3)' : 'var(--border)';
+
+      return <div style={{ margin:'8px 20px', padding:'16px', background:'var(--card)', border:'1px solid ' + borderColor, borderRadius:16, textAlign:'center', position:'relative', minHeight:100, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
+        {pos?.is_submission_position && <div style={{ position:'absolute', top:10, right:10, fontFamily:'DM Mono', fontSize:9, padding:'3px 8px', borderRadius:6, background:'rgba(230,57,70,.12)', color:'var(--accent)' }}>SUB THREAT</div>}
+        <div style={{ position:'absolute', top:10, left:10, fontFamily:'DM Mono', fontSize:9, padding:'3px 8px', borderRadius:6, background: iAmDominant ? 'rgba(46,196,182,.12)' : oppIsDominant ? 'rgba(230,57,70,.12)' : 'rgba(106,106,138,.1)', color: posColor, fontWeight:600 }}>{posLabel}</div>
+        <div style={{ fontSize:26, marginBottom:6 }}>{'\u{1F94B}'}</div>
+        <div style={{ fontSize:14, fontWeight:700 }}>{pos?.name?.replace(/ \(.*\)/, '')}</div>
+        <div style={{ fontFamily:'DM Mono', fontSize:9, textTransform:'uppercase', letterSpacing:2, color: FC[pos?.family] || 'var(--dim)', marginTop:2 }}>
+          {pos?.family?.replace('_', ' ')}
+        </div>
+        {oppIsDominant && <div style={{ fontSize:10, color:'var(--accent)', marginTop:4 }}>Opponent: {oppPosData?.name?.replace(/ \(.*\)/, '')}</div>}
+        {lastTurn && <div style={{ marginTop:6, fontSize:10, color:'var(--gold)', fontWeight:500 }} className="fade-in">{lastTurn.description}</div>}
+      </div>;
+    })()}
 
     {/* ========== PHASE 1: STANCE SELECTION ========== */}
     {phase === 'stance' && !myStanceLocked && match.status !== 'finished' && <div style={{ padding:'0 20px', paddingBottom:90 }}>
