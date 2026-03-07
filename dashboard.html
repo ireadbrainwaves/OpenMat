@@ -62,6 +62,14 @@ canvas{max-height:300px;}
   <div class="card"><h2>Win Methods</h2><div class="label">How matches end</div><canvas id="chart-methods"></canvas></div>
   <div class="card"><h2>Top Finishing Moves</h2><div class="label">Moves that get taps</div><div id="top-moves"></div></div>
 </div>
+<div class="grid g2">
+  <div class="card"><h2>Move Type Interactions</h2><div class="label">What happens when move types collide</div><div id="move-interactions"></div></div>
+  <div class="card"><h2>Stance Effectiveness</h2><div class="label">Win rate by stance matchup</div><div id="stance-matrix"></div></div>
+</div>
+<div class="grid g2">
+  <div class="card"><h2>Transition Success Rate</h2><div class="label">How often each move type succeeds vs fails</div><canvas id="chart-success"></canvas></div>
+  <div class="card"><h2>Counter Accuracy</h2><div class="label">How often counters actually stop attacks</div><div id="counter-accuracy"></div></div>
+</div>
 <div class="grid" style="grid-template-columns:1fr;">
   <div class="card"><h2>Archetype Position Matrix</h2><div class="label">How each archetype experiences positions</div><div id="matrix-heatmap"></div></div>
 </div>
@@ -97,7 +105,7 @@ async function loadData() {
   };
 }
 
-function render(data) {
+async function render(data) {
   const { matches, turns, profiles, matrix, positions } = data;
   const posMap = {};
   positions.forEach(p => posMap[p.id] = p);
@@ -207,44 +215,180 @@ function render(data) {
   });
 
   // === TOP FINISHING MOVES ===
+  // Load techniques to know which moves are submissions
+  const techRes = await sb.from('techniques').select('id,name,type');
+  const techMap = {};
+  if (techRes.data) techRes.data.forEach(t => techMap[t.id] = t);
+
   const moveSubs = {};
   turns.filter(t => t.result === 'submission_win').forEach(t => {
-    // Only count the winner's move, not the loser's
-    if (t.winner_id) {
-      // Figure out which player won this turn
-      const winnerMatch = matches.find(m => m.id === t.match_id);
-      if (winnerMatch) {
-        let winnerMove = null;
-        if (t.winner_id === winnerMatch.player1_id) winnerMove = t.player1_move;
-        else if (t.winner_id === winnerMatch.player2_id) winnerMove = t.player2_move;
-        if (winnerMove) moveSubs[winnerMove] = (moveSubs[winnerMove]||0) + 1;
-      }
+    // Check which move is actually a submission
+    const t1 = techMap[t.player1_move];
+    const t2 = techMap[t.player2_move];
+    if (t1 && t1.type === 'submission') {
+      moveSubs[t.player1_move] = (moveSubs[t.player1_move]||0) + 1;
+    } else if (t2 && t2.type === 'submission') {
+      moveSubs[t.player2_move] = (moveSubs[t.player2_move]||0) + 1;
     }
   });
   const topMoves = Object.entries(moveSubs).sort((a,b)=>b[1]-a[1]).slice(0,10);
-  
-  // Need technique names
-  const techNames = {};
-  positions.forEach(() => {}); // positions already loaded
-  
+
   document.getElementById('top-moves').innerHTML = `<table><thead><tr><th>Move</th><th>Taps</th></tr></thead><tbody>${
     topMoves.map(([mid, count]) => {
-      return `<tr><td style="font-weight:500">${mid}</td><td><span style="color:var(--accent);font-family:'JetBrains Mono';font-weight:600">${count}</span></td></tr>`;
+      const name = techMap[mid]?.name || mid;
+      return `<tr><td style="font-weight:500">${name}</td><td><span style="color:var(--accent);font-family:'JetBrains Mono';font-weight:600">${count}</span></td></tr>`;
     }).join('')
   }</tbody></table>`;
 
-  // Fetch technique names and update
-  sb.from('techniques').select('id,name').then(({data}) => {
-    if (data) {
-      const tMap = {};
-      data.forEach(t => tMap[t.id] = t.name);
-      document.getElementById('top-moves').innerHTML = `<table><thead><tr><th>Move</th><th>Taps</th></tr></thead><tbody>${
-        topMoves.map(([mid, count]) => {
-          return `<tr><td style="font-weight:500">${tMap[mid]||mid}</td><td><span style="color:var(--accent);font-family:'JetBrains Mono';font-weight:600">${count}</span></td></tr>`;
-        }).join('')
-      }</tbody></table>`;
+  // === MOVE TYPE INTERACTIONS ===
+  const moveTypes = ['submission','sweep','takedown','transition','escape'];
+  const interactions = {};
+  // Init grid
+  moveTypes.forEach(t1 => { interactions[t1] = {}; moveTypes.forEach(t2 => { interactions[t1][t2] = {total:0, p1wins:0, p2wins:0, holds:0}; }); });
+  // Also track counter interactions
+  const counterInts = {};
+  moveTypes.forEach(t => { counterInts[t] = {total:0, countered:0, got_through:0}; });
+
+  turns.forEach(t => {
+    const t1 = techMap[t.player1_move];
+    const t2 = techMap[t.player2_move];
+    const p1type = t1?.type || (t.player1_move_is_counter ? 'counter' : 'unknown');
+    const p2type = t2?.type || (t.player2_move_is_counter ? 'counter' : 'unknown');
+
+    // Track type vs type
+    if (p1type !== 'counter' && p1type !== 'unknown' && p2type !== 'counter' && p2type !== 'unknown') {
+      if (!interactions[p1type]) interactions[p1type] = {};
+      if (!interactions[p1type][p2type]) interactions[p1type][p2type] = {total:0,p1wins:0,p2wins:0,holds:0};
+      interactions[p1type][p2type].total++;
+      if (t.result === 'submission_win' || t.result === 'position_change') {
+        if (t.winner_id) interactions[p1type][p2type].p1wins++;
+        else interactions[p1type][p2type].holds++;
+      } else {
+        interactions[p1type][p2type].holds++;
+      }
+    }
+
+    // Track attack vs counter
+    if (p1type !== 'counter' && p1type !== 'unknown' && p2type === 'counter') {
+      if (!counterInts[p1type]) counterInts[p1type] = {total:0,countered:0,got_through:0};
+      counterInts[p1type].total++;
+      if (t.result === 'counter_success') counterInts[p1type].countered++;
+      else counterInts[p1type].got_through++;
+    }
+    if (p2type !== 'counter' && p2type !== 'unknown' && p1type === 'counter') {
+      if (!counterInts[p2type]) counterInts[p2type] = {total:0,countered:0,got_through:0};
+      counterInts[p2type].total++;
+      if (t.result === 'counter_success') counterInts[p2type].countered++;
+      else counterInts[p2type].got_through++;
     }
   });
+
+  // Render interaction matrix
+  let intHtml = '<div style="overflow-x:auto;"><table><thead><tr><th>P1 \\ P2</th>';
+  moveTypes.forEach(t => intHtml += `<th>${t.substring(0,6)}</th>`);
+  intHtml += '<th>counter</th></tr></thead><tbody>';
+  moveTypes.forEach(t1 => {
+    intHtml += `<tr><td style="font-weight:600;font-size:11px">${t1}</td>`;
+    moveTypes.forEach(t2 => {
+      const d = interactions[t1]?.[t2] || {total:0};
+      const bg = d.total > 10 ? 'rgba(255,255,255,.03)' : 'transparent';
+      intHtml += `<td style="text-align:center;background:${bg};font-family:'JetBrains Mono';font-size:10px">${d.total || '-'}</td>`;
+    });
+    // Counter column
+    const cd = counterInts[t1] || {total:0,countered:0,got_through:0};
+    const counterRate = cd.total > 0 ? Math.round(cd.countered / cd.total * 100) : 0;
+    const counterColor = counterRate > 50 ? 'var(--green)' : counterRate > 25 ? 'var(--gold)' : 'var(--accent)';
+    intHtml += `<td style="text-align:center;font-family:'JetBrains Mono';font-size:10px"><span style="color:${counterColor}">${counterRate}%</span><br><span style="color:var(--dim);font-size:8px">${cd.total} att</span></td>`;
+    intHtml += '</tr>';
+  });
+  intHtml += '</tbody></table></div>';
+  document.getElementById('move-interactions').innerHTML = intHtml;
+
+  // === STANCE EFFECTIVENESS ===
+  const stances = ['attack','defend','setup'];
+  const stanceStats = {};
+  stances.forEach(s1 => { stanceStats[s1] = {}; stances.forEach(s2 => { stanceStats[s1][s2] = {total:0,p1wins:0,subs:0}; }); });
+
+  turns.forEach(t => {
+    const s1 = t.player1_stance;
+    const s2 = t.player2_stance;
+    if (s1 && s2 && stanceStats[s1] && stanceStats[s1][s2]) {
+      stanceStats[s1][s2].total++;
+      if (t.result === 'submission_win' || t.result === 'position_change') stanceStats[s1][s2].p1wins++;
+      if (t.result === 'submission_win') stanceStats[s1][s2].subs++;
+    }
+  });
+
+  let stHtml = '<div style="overflow-x:auto;"><table><thead><tr><th>Your Stance \\ Opp</th>';
+  stances.forEach(s => stHtml += `<th>${s}</th>`);
+  stHtml += '</tr></thead><tbody>';
+  stances.forEach(s1 => {
+    stHtml += `<tr><td style="font-weight:600;font-size:12px;text-transform:capitalize">${s1}</td>`;
+    stances.forEach(s2 => {
+      const d = stanceStats[s1][s2];
+      const rate = d.total > 0 ? Math.round(d.p1wins / d.total * 100) : 0;
+      const subRate = d.total > 0 ? Math.round(d.subs / d.total * 100) : 0;
+      const bg = rate > 40 ? 'rgba(34,204,136,.1)' : rate < 20 ? 'rgba(255,59,79,.1)' : 'transparent';
+      stHtml += `<td style="text-align:center;background:${bg}">
+        <div style="font-family:'JetBrains Mono';font-size:14px;font-weight:600">${rate}%</div>
+        <div style="font-size:9px;color:var(--dim)">${d.total} turns</div>
+        <div style="font-size:9px;color:var(--accent)">${subRate}% sub</div>
+      </td>`;
+    });
+    stHtml += '</tr>';
+  });
+  stHtml += '</tbody></table></div>';
+  document.getElementById('stance-matrix').innerHTML = stHtml;
+
+  // === TRANSITION SUCCESS RATE CHART ===
+  const typeSuccess = {};
+  turns.forEach(t => {
+    const t1 = techMap[t.player1_move];
+    if (t1 && t1.type !== 'escape') {
+      if (!typeSuccess[t1.type]) typeSuccess[t1.type] = {attempts:0, success:0, taps:0};
+      typeSuccess[t1.type].attempts++;
+      if (t.result === 'position_change' || t.result === 'submission_win') typeSuccess[t1.type].success++;
+      if (t.result === 'submission_win') typeSuccess[t1.type].taps++;
+    }
+    const t2 = techMap[t.player2_move];
+    if (t2 && t2.type !== 'escape') {
+      if (!typeSuccess[t2.type]) typeSuccess[t2.type] = {attempts:0, success:0, taps:0};
+      typeSuccess[t2.type].attempts++;
+      if (t.result === 'position_change' || t.result === 'submission_win') typeSuccess[t2.type].success++;
+      if (t.result === 'submission_win') typeSuccess[t2.type].taps++;
+    }
+  });
+
+  const tsTypes = Object.keys(typeSuccess).filter(t => typeSuccess[t].attempts > 5);
+  new Chart(document.getElementById('chart-success'), {
+    type: 'bar',
+    data: {
+      labels: tsTypes.map(t => t.charAt(0).toUpperCase() + t.slice(1)),
+      datasets: [
+        { label:'Success %', data:tsTypes.map(t => Math.round(typeSuccess[t].success / typeSuccess[t].attempts * 100)), backgroundColor:'rgba(34,204,136,.7)', borderRadius:4 },
+        { label:'Tap %', data:tsTypes.map(t => Math.round(typeSuccess[t].taps / typeSuccess[t].attempts * 100)), backgroundColor:'rgba(255,59,79,.7)', borderRadius:4 }
+      ]
+    },
+    options: { responsive:true, plugins:{legend:{labels:{color:'#888',font:{size:10}}}}, scales:{x:{ticks:{color:'#888'}},y:{ticks:{color:'#888'},grid:{color:'#1a1a2e'},max:100}} }
+  });
+
+  // === COUNTER ACCURACY ===
+  let caHtml = '<table><thead><tr><th>Attack Type</th><th>Attempts</th><th>Countered</th><th>Got Through</th><th>Counter %</th></tr></thead><tbody>';
+  moveTypes.forEach(mt => {
+    const d = counterInts[mt];
+    if (!d || d.total === 0) return;
+    const rate = Math.round(d.countered / d.total * 100);
+    const color = rate > 50 ? 'var(--green)' : rate > 25 ? 'var(--gold)' : 'var(--accent)';
+    caHtml += `<tr>
+      <td style="font-weight:500;text-transform:capitalize">${mt}</td>
+      <td style="font-family:'JetBrains Mono'">${d.total}</td>
+      <td style="font-family:'JetBrains Mono';color:var(--green)">${d.countered}</td>
+      <td style="font-family:'JetBrains Mono';color:var(--accent)">${d.got_through}</td>
+      <td style="font-family:'JetBrains Mono';font-weight:600;color:${color}">${rate}%</td>
+    </tr>`;
+  });
+  caHtml += '</tbody></table>';
+  document.getElementById('counter-accuracy').innerHTML = caHtml;
 
   // === ARCHETYPE MATRIX HEATMAP ===
   const matMap = {};
