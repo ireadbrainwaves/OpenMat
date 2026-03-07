@@ -447,6 +447,10 @@ function MatchScreen({ profile, matchId, onEnd }) {
   const [moves, setMoves] = useState([]);
   const [busy, setBusy] = useState(false);
   const [lastTurn, setLastTurn] = useState(null);
+  const [turnHistory, setTurnHistory] = useState([]);
+  const [isBait, setIsBait] = useState(false);
+  const [feintMove, setFeintMove] = useState(null);
+  const [showFeintPicker, setShowFeintPicker] = useState(false);
 
   const amP1 = match?.player1_id === profile.id;
   const myPos = amP1 ? match?.player1_position : match?.player2_position;
@@ -454,6 +458,11 @@ function MatchScreen({ profile, matchId, onEnd }) {
   const oppPts = amP1 ? match?.player2_points : match?.player1_points;
   const myLocked = amP1 ? match?.player1_move_locked : match?.player2_move_locked;
   const oppLocked = amP1 ? match?.player2_move_locked : match?.player1_move_locked;
+  const myStanceLocked = amP1 ? match?.player1_stance_locked : match?.player2_stance_locked;
+  const oppStanceLocked = amP1 ? match?.player2_stance_locked : match?.player1_stance_locked;
+  const oppStance = amP1 ? match?.player2_stance : match?.player1_stance;
+  const myFeints = amP1 ? match?.player1_feints_remaining : match?.player2_feints_remaining;
+  const phase = match?.turn_phase || 'stance';
   const pos = G.positions[myPos];
 
   // Initial load
@@ -463,7 +472,7 @@ function MatchScreen({ profile, matchId, onEnd }) {
       const { data: m, error: me } = await sb.from('matches').select('*').eq('id', matchId).single();
       if (me) { dbg('Match load error: ' + me.message, 'err'); return; }
       setMatch(m);
-      dbg('Match loaded: turn ' + m.current_turn + ' status ' + m.status, 'ok');
+      dbg('Match loaded: turn ' + m.current_turn + ' phase ' + m.turn_phase + ' status ' + m.status, 'ok');
 
       const oppId = m.player1_id === profile.id ? m.player2_id : m.player1_id;
       const { data: o } = await sb.from('profiles').select('*').eq('id', oppId).single();
@@ -472,20 +481,20 @@ function MatchScreen({ profile, matchId, onEnd }) {
       const { data: d } = await sb.from('player_move_stacks').select('technique_id').eq('profile_id', profile.id);
       if (d) { setDeck(d.map(x => x.technique_id)); dbg('Deck loaded: ' + d.length + ' techniques', 'ok'); }
 
-      const { data: t } = await sb.from('match_turns').select('*').eq('match_id', matchId).order('turn_number', { ascending: false }).limit(1);
-      if (t && t.length > 0) setLastTurn(t[0]);
+      const { data: t } = await sb.from('match_turns').select('*').eq('match_id', matchId).order('turn_number');
+      if (t) { setTurnHistory(t); if (t.length > 0) setLastTurn(t[t.length - 1]); }
     })();
   }, [matchId]);
 
-  // Realtime subscription
+  // Realtime
   useEffect(() => {
     const ch = sb.channel('match-' + matchId).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches', filter: 'id=eq.' + matchId }, async (payload) => {
-      dbg('Match update: turn ' + payload.new.current_turn + ' status ' + payload.new.status, 'ok');
+      dbg('Match update: turn ' + payload.new.current_turn + ' phase ' + payload.new.turn_phase + ' status ' + payload.new.status, 'ok');
       setMatch(payload.new);
-      setSel(null);
+      setSel(null); setIsBait(false); setFeintMove(null); setShowFeintPicker(false);
 
-      const { data: t } = await sb.from('match_turns').select('*').eq('match_id', matchId).order('turn_number', { ascending: false }).limit(1);
-      if (t && t.length > 0) setLastTurn(t[0]);
+      const { data: t } = await sb.from('match_turns').select('*').eq('match_id', matchId).order('turn_number');
+      if (t) { setTurnHistory(t); if (t.length > 0) setLastTurn(t[t.length - 1]); }
 
       if (payload.new.status === 'finished') {
         dbg('Match finished!', 'ok');
@@ -495,7 +504,7 @@ function MatchScreen({ profile, matchId, onEnd }) {
     return () => sb.removeChannel(ch);
   }, [matchId]);
 
-  // Update moves when position changes
+  // Update moves
   useEffect(() => {
     if (myPos && deck.length > 0) {
       const m = getMoves(myPos, profile.belt, deck, match?.status === 'overtime');
@@ -504,19 +513,38 @@ function MatchScreen({ profile, matchId, onEnd }) {
     }
   }, [myPos, deck, match?.status]);
 
-  async function lockIn() {
+  // Opponent tendency (last 3 stances)
+  const oppTendency = turnHistory.slice(-3).map(t => amP1 ? t.player2_stance : t.player1_stance).filter(Boolean);
+
+  async function lockStance(stance) {
+    if (busy) return;
+    setBusy(true);
+    dbg('Submitting stance: ' + stance, 'ok');
+    const { data, error } = await sb.rpc('submit_stance', { p_match_id: matchId, p_stance: stance });
+    if (error) dbg('Stance error: ' + error.message, 'err');
+    else dbg('Stance submitted', 'ok');
+    setBusy(false);
+  }
+
+  async function lockMove() {
     if (!sel || busy) return;
     setBusy(true);
-    dbg('Submitting move: ' + sel.id + (sel.isCounter ? ' (counter)' : ''), 'ok');
-    const { data, error } = await sb.rpc('submit_move', { p_match_id: matchId, p_technique_id: sel.id, p_is_counter: sel.isCounter || false });
-    if (error) dbg('Submit error: ' + error.message, 'err');
-    else dbg('Move submitted: ' + JSON.stringify(data), 'ok');
+    dbg('Submitting move: ' + sel.id + (isBait ? ' BAIT' : '') + (feintMove ? ' FEINT:' + feintMove : ''), 'ok');
+    const { data, error } = await sb.rpc('submit_move', {
+      p_match_id: matchId, p_technique_id: sel.id,
+      p_is_counter: sel.isCounter || false,
+      p_is_bait: isBait, p_feint_move: feintMove
+    });
+    if (error) dbg('Move error: ' + error.message, 'err');
+    else dbg('Move submitted', 'ok');
     setBusy(false);
   }
 
   if (!match || !opp) return <div style={css.center}><span className="spinner" style={{ width:30, height:30 }} /><div style={{ color:'var(--dim)', fontSize:13 }}>Loading match...</div></div>;
 
   const counters = Object.values(G.counters).slice(0, 10);
+  const stanceIcons = { attack: '\u2694\uFE0F', defend: '\u{1F6E1}\uFE0F', setup: '\u{1F501}' };
+  const stanceColors = { attack: 'var(--accent)', defend: 'var(--blue)', setup: 'var(--gold)' };
 
   return <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column' }}>
     {/* HUD */}
@@ -536,36 +564,112 @@ function MatchScreen({ profile, matchId, onEnd }) {
       </div>
     </div>
 
-    {/* Turn bar */}
+    {/* Turn + Phase bar */}
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'4px 20px' }}>
       <span style={{ fontFamily:'DM Mono', fontSize:10, color:'var(--dim)' }}>Turn {match.current_turn}/{match.max_turns}</span>
+      <div style={{ padding:'2px 8px', borderRadius:4, fontSize:9, fontWeight:600, fontFamily:'DM Mono', background: phase === 'stance' ? 'rgba(244,162,97,.15)' : phase === 'move' ? 'rgba(230,57,70,.15)' : 'rgba(106,106,138,.15)', color: phase === 'stance' ? 'var(--gold)' : phase === 'move' ? 'var(--accent)' : 'var(--dim)' }}>
+        {phase === 'stance' ? 'PICK STANCE' : phase === 'move' ? 'PICK MOVE' : 'RESOLVING'}
+      </div>
       <div style={{ display:'flex', gap:1 }}>
         {Array.from({ length: Math.min(15, match.max_turns) }, (_, i) =>
-          <div key={i} style={{ width:6, height:3, borderRadius:1, background: i < match.current_turn ? 'var(--accent)' : i === match.current_turn ? 'var(--gold)' : 'var(--border)' }} />
+          <div key={i} style={{ width:5, height:3, borderRadius:1, background: i < match.current_turn ? 'var(--accent)' : i === match.current_turn ? 'var(--gold)' : 'var(--border)' }} />
         )}
       </div>
-      {oppLocked && !myLocked && <span style={{ fontSize:9, color:'var(--green)', fontWeight:600, marginLeft:4 }}>Opp locked!</span>}
     </div>
 
-    {/* Position */}
-    <div style={{ margin:'10px 20px', padding:'20px 16px', background:'var(--card)', border:'1px solid var(--border)', borderRadius:16, textAlign:'center', position:'relative', minHeight:120, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
-      {pos?.is_submission_position && <div style={{ position:'absolute', top:10, right:10, fontFamily:'DM Mono', fontSize:9, padding:'3px 8px', borderRadius:6, background:'rgba(230,57,70,.12)', color:'var(--accent)' }}>SUB THREAT</div>}
-      <div style={{ fontSize:30, marginBottom:8 }}>{'\u{1F94B}'}</div>
-      <div style={{ fontSize:15, fontWeight:700 }}>{pos?.name?.replace(/ \(.*\)/, '')}</div>
-      <div style={{ fontFamily:'DM Mono', fontSize:9, textTransform:'uppercase', letterSpacing:2, color: FC[pos?.family] || 'var(--dim)', marginTop:3 }}>
-        {pos?.family?.replace('_', ' ')} {pos?.is_dominant ? '- Dominant' : ''}
-      </div>
-      {lastTurn && <div style={{ marginTop:8, fontSize:11, color:'var(--gold)', fontWeight:500 }} className="fade-in">{lastTurn.description}</div>}
-    </div>
-
-    {/* Waiting state */}
-    {myLocked && match.status !== 'finished' && <div style={{ textAlign:'center', padding:20 }}>
-      <span className="spinner" style={{ display:'block', margin:'0 auto 8px' }} />
-      <div style={{ fontSize:13, fontWeight:600, color:'var(--dim)' }}>Move locked - waiting for opponent...</div>
+    {/* Opponent tendency tracker */}
+    {oppTendency.length > 0 && <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:'4px 20px' }}>
+      <span style={{ fontSize:9, color:'var(--dim)', fontFamily:'DM Mono' }}>OPP TENDENCY:</span>
+      {oppTendency.map((s, i) => <span key={i} style={{ fontSize:14 }}>{stanceIcons[s] || '?'}</span>)}
     </div>}
 
-    {/* Move selection */}
-    {!myLocked && match.status !== 'finished' && <div style={{ padding:'0 20px', flex:1, overflowY:'auto', paddingBottom:90 }}>
+    {/* Position */}
+    <div style={{ margin:'8px 20px', padding:'16px', background:'var(--card)', border:'1px solid var(--border)', borderRadius:16, textAlign:'center', position:'relative', minHeight:100, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
+      {pos?.is_submission_position && <div style={{ position:'absolute', top:10, right:10, fontFamily:'DM Mono', fontSize:9, padding:'3px 8px', borderRadius:6, background:'rgba(230,57,70,.12)', color:'var(--accent)' }}>SUB THREAT</div>}
+      <div style={{ fontSize:26, marginBottom:6 }}>{'\u{1F94B}'}</div>
+      <div style={{ fontSize:14, fontWeight:700 }}>{pos?.name?.replace(/ \(.*\)/, '')}</div>
+      <div style={{ fontFamily:'DM Mono', fontSize:9, textTransform:'uppercase', letterSpacing:2, color: FC[pos?.family] || 'var(--dim)', marginTop:2 }}>
+        {pos?.family?.replace('_', ' ')} {pos?.is_dominant ? '- Dominant' : ''}
+      </div>
+      {lastTurn && <div style={{ marginTop:6, fontSize:10, color:'var(--gold)', fontWeight:500 }} className="fade-in">{lastTurn.description}</div>}
+    </div>
+
+    {/* ========== PHASE 1: STANCE SELECTION ========== */}
+    {phase === 'stance' && !myStanceLocked && match.status !== 'finished' && <div style={{ padding:'0 20px', paddingBottom:90 }}>
+      <div style={css.section}>Choose Your Stance</div>
+      <div style={{ display:'flex', gap:8, marginBottom:12 }}>
+        {[['attack','Attack','Go offensive - transitions, sweeps, submissions','\u2694\uFE0F'],['defend','Defend','Counter or escape - read and react','\u{1F6E1}\uFE0F'],['setup','Setup','Reposition - grip fight, feel out','\u{1F501}']].map(([id,label,desc,icon]) =>
+          <div key={id} onClick={() => !busy && lockStance(id)}
+            style={{ flex:1, padding:'16px 8px', borderRadius:14, border:'2px solid var(--border)', background:'var(--card)', textAlign:'center', cursor:'pointer', transition:'all .2s' }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = stanceColors[id]}
+            onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+            <div style={{ fontSize:28, marginBottom:6 }}>{icon}</div>
+            <div style={{ fontSize:13, fontWeight:700, color: stanceColors[id] }}>{label}</div>
+            <div style={{ fontSize:9, color:'var(--dim)', marginTop:4, lineHeight:1.3 }}>{desc}</div>
+          </div>
+        )}
+      </div>
+      {busy && <div style={{ textAlign:'center' }}><span className="spinner" /></div>}
+    </div>}
+
+    {/* Waiting for opponent stance */}
+    {phase === 'stance' && myStanceLocked && <div style={{ textAlign:'center', padding:20 }}>
+      <span className="spinner" style={{ display:'block', margin:'0 auto 8px' }} />
+      <div style={{ fontSize:13, fontWeight:600, color:'var(--dim)' }}>Stance locked - waiting for opponent...</div>
+    </div>}
+
+    {/* ========== PHASE 2: MOVE SELECTION (stances revealed) ========== */}
+    {phase === 'move' && !myLocked && match.status !== 'finished' && <div style={{ padding:'0 20px', flex:1, overflowY:'auto', paddingBottom:100 }}>
+
+      {/* Revealed stances */}
+      <div style={{ display:'flex', justifyContent:'center', gap:16, marginBottom:12, padding:'8px', background:'var(--card2)', borderRadius:10 }}>
+        <div style={{ textAlign:'center' }}>
+          <div style={{ fontSize:9, color:'var(--dim)', fontFamily:'DM Mono' }}>YOU</div>
+          <div style={{ fontSize:20 }}>{stanceIcons[amP1 ? match.player1_stance : match.player2_stance]}</div>
+          <div style={{ fontSize:10, fontWeight:600, color: stanceColors[amP1 ? match.player1_stance : match.player2_stance], textTransform:'capitalize' }}>{amP1 ? match.player1_stance : match.player2_stance}</div>
+        </div>
+        <div style={{ fontSize:14, color:'var(--dim)', alignSelf:'center' }}>vs</div>
+        <div style={{ textAlign:'center' }}>
+          <div style={{ fontSize:9, color:'var(--dim)', fontFamily:'DM Mono' }}>OPP</div>
+          <div style={{ fontSize:20 }}>{stanceIcons[oppStance]}</div>
+          <div style={{ fontSize:10, fontWeight:600, color: stanceColors[oppStance], textTransform:'capitalize' }}>{oppStance}</div>
+        </div>
+      </div>
+
+      {/* Bait + Feint toggles */}
+      <div style={{ display:'flex', gap:6, marginBottom:10 }}>
+        <div onClick={() => setIsBait(!isBait)}
+          style={{ flex:1, padding:'8px', borderRadius:8, border:'1px solid ' + (isBait ? 'var(--gold)' : 'var(--border)'), background: isBait ? 'rgba(244,162,97,.08)' : 'var(--card)', textAlign:'center', cursor:'pointer' }}>
+          <div style={{ fontSize:12, fontWeight:600, color: isBait ? 'var(--gold)' : 'var(--dim)' }}>{'\u{1F3AD}'} Bait</div>
+          <div style={{ fontSize:8, color:'var(--dim)', marginTop:2 }}>Stance was a lie</div>
+        </div>
+        <div onClick={() => myFeints > 0 && setShowFeintPicker(!showFeintPicker)}
+          style={{ flex:1, padding:'8px', borderRadius:8, border:'1px solid ' + (feintMove ? 'var(--purple)' : 'var(--border)'), background: feintMove ? 'rgba(139,92,246,.08)' : 'var(--card)', textAlign:'center', cursor: myFeints > 0 ? 'pointer' : 'default', opacity: myFeints > 0 ? 1 : 0.4 }}>
+          <div style={{ fontSize:12, fontWeight:600, color: feintMove ? 'var(--purple)' : 'var(--dim)' }}>{'\u{1F47B}'} Feint ({myFeints || 0})</div>
+          <div style={{ fontSize:8, color:'var(--dim)', marginTop:2 }}>{feintMove ? G.techniques[feintMove]?.name : 'Show fake move'}</div>
+        </div>
+      </div>
+
+      {/* Feint picker */}
+      {showFeintPicker && <div style={{ marginBottom:10, padding:10, background:'var(--card)', border:'1px solid var(--purple)', borderRadius:10, maxHeight:120, overflowY:'auto' }}>
+        <div style={{ fontSize:9, color:'var(--purple)', fontFamily:'DM Mono', marginBottom:6 }}>PICK FAKE MOVE TO SHOW</div>
+        {moves.filter(m => m.type === 'submission').map(m =>
+          <div key={m.id} onClick={() => { setFeintMove(m.id); setShowFeintPicker(false); }}
+            style={{ padding:'6px 8px', borderRadius:6, fontSize:11, cursor:'pointer', marginBottom:3, background: feintMove === m.id ? 'rgba(139,92,246,.15)' : 'var(--card2)', color: feintMove === m.id ? 'var(--purple)' : 'var(--text)' }}>
+            {m.name}
+          </div>
+        )}
+        {moves.filter(m => m.type !== 'submission').slice(0, 5).map(m =>
+          <div key={m.id} onClick={() => { setFeintMove(m.id); setShowFeintPicker(false); }}
+            style={{ padding:'6px 8px', borderRadius:6, fontSize:11, cursor:'pointer', marginBottom:3, background: feintMove === m.id ? 'rgba(139,92,246,.15)' : 'var(--card2)', color: feintMove === m.id ? 'var(--purple)' : 'var(--text)' }}>
+            {m.name}
+          </div>
+        )}
+        <div onClick={() => { setFeintMove(null); setShowFeintPicker(false); }}
+          style={{ padding:'6px 8px', borderRadius:6, fontSize:11, cursor:'pointer', color:'var(--dim)' }}>Cancel feint</div>
+      </div>}
+
+      {/* Move list */}
       <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
         <span style={{ fontFamily:'DM Mono', fontSize:9, textTransform:'uppercase', letterSpacing:2, color:'var(--dim)' }}>Your Moves</span>
         <span style={{ fontFamily:'DM Mono', fontSize:10, color:'var(--dim)' }}>{moves.length}</span>
@@ -588,7 +692,7 @@ function MatchScreen({ profile, matchId, onEnd }) {
         </div>
       )}
 
-      <div style={{ ...css.section, marginTop:12 }}>Counters</div>
+      <div style={{ ...css.section, marginTop:10 }}>Counters</div>
       <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginBottom:16 }}>
         {counters.map(c =>
           <div key={c.id} onClick={() => setSel({ id: c.id, isCounter: true })}
@@ -602,11 +706,23 @@ function MatchScreen({ profile, matchId, onEnd }) {
       </div>
     </div>}
 
-    {/* Lock in button */}
-    {!myLocked && match.status !== 'finished' && <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'12px 20px 24px', background:'linear-gradient(180deg, transparent 0%, #08080d 40%)' }}>
-      <button onClick={lockIn} disabled={!sel || busy}
+    {/* Waiting for opponent move */}
+    {phase === 'move' && myLocked && match.status !== 'finished' && <div style={{ textAlign:'center', padding:20 }}>
+      <span className="spinner" style={{ display:'block', margin:'0 auto 8px' }} />
+      <div style={{ fontSize:13, fontWeight:600, color:'var(--dim)' }}>Move locked - waiting for opponent...</div>
+    </div>}
+
+    {/* Resolving */}
+    {phase === 'resolving' && <div style={{ textAlign:'center', padding:30 }} className="fade-in">
+      <div style={{ fontSize:24, marginBottom:8 }}>{'\u23F3'}</div>
+      <div style={{ fontSize:14, fontWeight:600 }}>Resolving...</div>
+    </div>}
+
+    {/* Lock in button (move phase only) */}
+    {phase === 'move' && !myLocked && match.status !== 'finished' && <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'12px 20px 24px', background:'linear-gradient(180deg, transparent 0%, #08080d 40%)' }}>
+      <button onClick={lockMove} disabled={!sel || busy}
         style={{ ...css.btn(!!sel), opacity: sel ? 1 : 0.5, fontSize:15, fontWeight:700, animation: sel ? 'pulseGlow 2s infinite' : 'none' }}>
-        {busy ? <span className="spinner" /> : sel ? 'Lock In Move' : 'Select a Move'}
+        {busy ? <span className="spinner" /> : sel ? ('Lock In' + (isBait ? ' (BAIT)' : '') + (feintMove ? ' (FEINT)' : '')) : 'Select a Move'}
       </button>
     </div>}
   </div>;
