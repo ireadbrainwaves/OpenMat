@@ -1,0 +1,11 @@
+match_id,p1_name,p1_archetype,p2_name,p2_archetype,winner,method,turns,p1_points,p2_points,p1_elo_delta,p2_elo_delta
+67fab38e-ad39-4af5-8ff7-5fa7d5508a23,Iron Mike,wrestler,Rodolfo,pressure_passer,Iron Mike,Points - 7 to 0,30,7,0,16,-16
+2d476875-07f2-47b0-b5a5-0defffcd4b98,Haisam,leg_locker,Miyao,guard_puller,Haisam,Submission - Toe Hold,7,0,0,16,-16
+998a3f81-ed88-48fb-be9a-f055d88482f2,Ruotolo,scrambler,Marcelo,submission_hunter,Marcelo,Submission - Standing Guillotine,2,0,0,-16,16
+ef39d22e-9efb-4912-86d1-bedd82e73382,Rodolfo,pressure_passer,Ruotolo,scrambler,Ruotolo,Submission - Rear Naked Choke,21,0,6,-16,16
+ca9a1453-7100-4a7c-98a7-2f61e823fd42,Miyao,guard_puller,Iron Mike,wrestler,Miyao,Submission chain - Triangle (from Lasso),7,0,0,17,-17
+c0cc3eaa-31ba-4b06-9296-f7baf6752020,Iron Mike,wrestler,Ruotolo,scrambler,Ruotolo,Points - 4 to 0,30,0,4,-16,16
+a9448bc5-446c-42c4-bf55-af022e1a3523,Haisam,leg_locker,Marcelo,submission_hunter,Marcelo,Submission - Kimura (from Half Guard Bottom),19,0,2,-16,16
+55def0c9-6128-4159-8cde-15c97322b261,Haisam,leg_locker,Marcelo,submission_hunter,Marcelo,Submission - Anaconda Choke (from Front Headlock),14,0,0,-15,15
+d032a2c7-8073-4a02-ab62-fa562e302611,Marcelo,submission_hunter,Haisam,leg_locker,Haisam,Submission - Kneebar (from Saddle),14,0,0,-19,19
+22b4f9c0-cdb0-4969-aa69-fef62fba0e3d,Rodolfo,pressure_passer,Miyao,guard_puller,Rodolfo,Submission - Kimura (from Side Control),8,0,0,18,-18

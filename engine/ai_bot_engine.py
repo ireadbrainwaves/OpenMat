@@ -623,20 +623,21 @@ def run_match(graph, p1, p2, p1_deck, p2_deck, match_num):
         match['player1_chain'] = outcome.get('p1_chain', 0)
         match['player2_chain'] = outcome.get('p2_chain', 0)
 
-        # Record turn in DB
-        db_insert('match_turns', {
-            'match_id': match_id, 'turn_number': turn,
-            'player1_move': p1_move_id, 'player1_move_is_counter': p1_is_counter,
-            'player2_move': p2_move_id, 'player2_move_is_counter': p2_is_counter,
-            'result': outcome['result_type'], 'winner_id': outcome['winner'],
-            'new_position': outcome['new_pos'] or match['current_position'],
-            'player1_points_delta': outcome['p1_pts'], 'player2_points_delta': outcome['p2_pts'],
-            'description': outcome['desc'],
-            'player1_stance': p1_stance, 'player2_stance': p2_stance,
-            'player1_gp_before': match.get('player1_gp', 10), 'player2_gp_before': match.get('player2_gp', 10),
-            'player1_gp_cost': outcome.get('p1_gp_cost', 0), 'player2_gp_cost': outcome.get('p2_gp_cost', 0),
-            'player1_chain': outcome.get('p1_chain', 0), 'player2_chain': outcome.get('p2_chain', 0),
-        })
+        # Record turn in DB (skip if sub entry — minigame handles its own insert)
+        if not outcome.get('start_minigame'):
+            db_insert('match_turns', {
+                'match_id': match_id, 'turn_number': turn,
+                'player1_move': p1_move_id, 'player1_move_is_counter': p1_is_counter,
+                'player2_move': p2_move_id, 'player2_move_is_counter': p2_is_counter,
+                'result': outcome['result_type'], 'winner_id': outcome['winner'],
+                'new_position': outcome['new_pos'] or match['current_position'],
+                'player1_points_delta': outcome['p1_pts'], 'player2_points_delta': outcome['p2_pts'],
+                'description': outcome['desc'],
+                'player1_stance': p1_stance, 'player2_stance': p2_stance,
+                'player1_gp_before': match.get('player1_gp', 10), 'player2_gp_before': match.get('player2_gp', 10),
+                'player1_gp_cost': outcome.get('p1_gp_cost', 0), 'player2_gp_cost': outcome.get('p2_gp_cost', 0),
+                'player1_chain': outcome.get('p1_chain', 0), 'player2_chain': outcome.get('p2_chain', 0),
+            })
 
         # Print
         p1mn = graph['techniques'].get(p1_move_id, graph['counters'].get(p1_move_id, {}))
