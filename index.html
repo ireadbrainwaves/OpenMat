@@ -65,15 +65,16 @@ document.addEventListener('click', e => {
 });
 
 // === GRAPH CACHE ===
-const G = { positions: {}, techniques: {}, counters: {}, techFrom: {}, pairMap: {} };
+const G = { positions: {}, techniques: {}, counters: {}, techFrom: {}, pairMap: {}, matrix: {} };
 const beltOrder = { white:1, blue:2, purple:3, brown:4, black:5 };
 
 async function loadGraph() {
   dbg('Loading graph...', 'ok');
-  const [p, t, c] = await Promise.all([
+  const [p, t, c, m] = await Promise.all([
     sb.from('positions').select('*'),
     sb.from('techniques').select('*'),
-    sb.from('counter_techniques').select('*')
+    sb.from('counter_techniques').select('*'),
+    sb.from('archetype_position_matrix').select('*')
   ]);
   if (p.error) { dbg('Positions error: ' + p.error.message, 'err'); return false; }
   if (t.error) { dbg('Techniques error: ' + t.error.message, 'err'); return false; }
@@ -90,15 +91,45 @@ async function loadGraph() {
   });
   c.data.forEach(ct => G.counters[ct.id] = ct);
 
+  // Load archetype matrix
+  if (m.data) {
+    m.data.forEach(row => {
+      if (!G.matrix[row.position_id]) G.matrix[row.position_id] = {};
+      G.matrix[row.position_id][row.archetype] = row.status;
+    });
+    dbg('Matrix loaded: ' + m.data.length + ' entries', 'ok');
+  }
+
   dbg('Graph loaded: ' + p.data.length + ' pos, ' + t.data.length + ' tech, ' + c.data.length + ' counters', 'ok');
   return true;
 }
 
-function getMoves(posId, belt, deck, overtime) {
+// Get archetype status at a position
+function getStatus(posId, archetype) {
+  return (G.matrix[posId] && G.matrix[posId][archetype]) || 'neutral';
+}
+
+function getMoves(posId, belt, deck, overtime, archetype) {
   const lvl = beltOrder[belt] || 1;
-  return (G.techFrom[posId] || []).filter(t =>
-    (beltOrder[t.belt_unlock] || 1) <= lvl && deck.includes(t.id) && (!overtime || t.type === 'submission')
-  );
+  const status = archetype ? getStatus(posId, archetype) : 'neutral';
+
+  return (G.techFrom[posId] || []).filter(t => {
+    if ((beltOrder[t.belt_unlock] || 1) > lvl) return false;
+    if (!deck.includes(t.id)) return false;
+    if (overtime && t.type !== 'submission') return false;
+
+    // Filter by archetype status
+    if (status === 'defending') {
+      // Only escapes allowed
+      if (t.type !== 'escape') return false;
+    } else if (status === 'disadvantaged') {
+      // Only escapes, and fewer of them
+      if (t.type !== 'escape') return false;
+    }
+    // dominant and neutral = all moves available
+
+    return true;
+  });
 }
 </script>
 <script type="text/babel">
@@ -504,36 +535,24 @@ function MatchScreen({ profile, matchId, onEnd }) {
     return () => sb.removeChannel(ch);
   }, [matchId]);
 
-  // Update moves - filter based on dominance perspective
+  // Update moves - filter based on archetype status at this position
+  const myStatus = getStatus(myPos, profile.archetype);
+  
   useEffect(() => {
     if (myPos && deck.length > 0) {
-      let m = getMoves(myPos, profile.belt, deck, match?.status === 'overtime');
+      let m = getMoves(myPos, profile.belt, deck, match?.status === 'overtime', profile.archetype);
       
-      // Check dominance perspective
-      const oppPos = amP1 ? match?.player2_position : match?.player1_position;
-      const oppPosData = G.positions[oppPos];
-      const iAmDominant = pos?.is_dominant && (!oppPosData?.is_dominant);
-      const oppIsDominant = oppPosData?.is_dominant && (!pos?.is_dominant);
-      
-      if (oppIsDominant) {
-        // I'm defending - only show escapes from my position
-        // Also check if opponent's position has escapes I can use
-        const escapes = m.filter(t => t.type === 'escape');
-        
-        // Also grab escapes from the opponent's paired position if applicable
-        const pairedPos = G.pairMap[oppPos];
-        if (pairedPos && pairedPos !== myPos) {
-          const pairedMoves = getMoves(pairedPos, profile.belt, deck, false);
-          const pairedEscapes = pairedMoves.filter(t => t.type === 'escape');
-          escapes.push(...pairedEscapes);
+      // If we got zero moves from our position, check the defending positions too
+      if (m.length === 0) {
+        const defPositions = ['defending_clinch','defending_passing','defending_leg_entanglement','defending_back','defending_mount'];
+        for (const dp of defPositions) {
+          const defMoves = getMoves(dp, profile.belt, deck, false, profile.archetype);
+          if (defMoves.length > 0) { m = defMoves; break; }
         }
-        
-        m = escapes.length > 0 ? escapes : m.filter(t => t.type === 'escape' || t.type === 'transition');
-        dbg('Defending - filtered to ' + m.length + ' escapes/transitions', 'ok');
       }
       
       setMoves(m);
-      dbg('Position: ' + myPos + ' (' + (iAmDominant ? 'dominant' : oppIsDominant ? 'defending' : 'neutral') + ') - ' + m.length + ' moves available', 'ok');
+      dbg('Position: ' + myPos + ' [' + myStatus + ' for ' + profile.archetype + '] - ' + m.length + ' moves', 'ok');
     }
   }, [myPos, deck, match?.status, match?.player1_position, match?.player2_position]);
 
@@ -609,23 +628,27 @@ function MatchScreen({ profile, matchId, onEnd }) {
 
     {/* Position */}
     {(() => {
+      const statusColors = { dominant:'var(--green)', neutral:'var(--dim)', defending:'var(--gold)', disadvantaged:'var(--accent)' };
+      const statusBg = { dominant:'rgba(46,196,182,.12)', neutral:'rgba(106,106,138,.1)', defending:'rgba(244,162,97,.12)', disadvantaged:'rgba(230,57,70,.12)' };
+      const statusBorder = { dominant:'rgba(46,196,182,.3)', neutral:'var(--border)', defending:'rgba(244,162,97,.3)', disadvantaged:'rgba(230,57,70,.3)' };
+      const statusEmoji = { dominant:'\u{1F525}', neutral:'\u2696\uFE0F', defending:'\u{1F6E1}\uFE0F', disadvantaged:'\u26A0\uFE0F' };
+      const st = myStatus;
       const oppPos = amP1 ? match?.player2_position : match?.player1_position;
       const oppPosData = G.positions[oppPos];
-      const iAmDominant = pos?.is_dominant && (!oppPosData?.is_dominant);
-      const oppIsDominant = oppPosData?.is_dominant && (!pos?.is_dominant);
-      const posLabel = iAmDominant ? 'DOMINANT' : oppIsDominant ? 'DEFENDING' : 'NEUTRAL';
-      const posColor = iAmDominant ? 'var(--green)' : oppIsDominant ? 'var(--accent)' : 'var(--dim)';
-      const borderColor = iAmDominant ? 'rgba(46,196,182,.3)' : oppIsDominant ? 'rgba(230,57,70,.3)' : 'var(--border)';
+      const oppStatus = getStatus(oppPos, opp?.archetype || 'wrestler');
 
-      return <div style={{ margin:'8px 20px', padding:'16px', background:'var(--card)', border:'1px solid ' + borderColor, borderRadius:16, textAlign:'center', position:'relative', minHeight:100, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
-        {pos?.is_submission_position && <div style={{ position:'absolute', top:10, right:10, fontFamily:'DM Mono', fontSize:9, padding:'3px 8px', borderRadius:6, background:'rgba(230,57,70,.12)', color:'var(--accent)' }}>SUB THREAT</div>}
-        <div style={{ position:'absolute', top:10, left:10, fontFamily:'DM Mono', fontSize:9, padding:'3px 8px', borderRadius:6, background: iAmDominant ? 'rgba(46,196,182,.12)' : oppIsDominant ? 'rgba(230,57,70,.12)' : 'rgba(106,106,138,.1)', color: posColor, fontWeight:600 }}>{posLabel}</div>
+      return <div style={{ margin:'8px 20px', padding:'16px', background:'var(--card)', border:'1px solid ' + (statusBorder[st] || 'var(--border)'), borderRadius:16, textAlign:'center', position:'relative', minHeight:100, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
+        {pos?.is_submission_position && st === 'dominant' && <div style={{ position:'absolute', top:10, right:10, fontFamily:'DM Mono', fontSize:9, padding:'3px 8px', borderRadius:6, background:'rgba(230,57,70,.12)', color:'var(--accent)' }}>SUB THREAT</div>}
+        <div style={{ position:'absolute', top:10, left:10, fontFamily:'DM Mono', fontSize:9, padding:'3px 8px', borderRadius:6, background: statusBg[st], color: statusColors[st], fontWeight:600 }}>
+          {statusEmoji[st]} {st.toUpperCase()}
+        </div>
         <div style={{ fontSize:26, marginBottom:6 }}>{'\u{1F94B}'}</div>
         <div style={{ fontSize:14, fontWeight:700 }}>{pos?.name?.replace(/ \(.*\)/, '')}</div>
         <div style={{ fontFamily:'DM Mono', fontSize:9, textTransform:'uppercase', letterSpacing:2, color: FC[pos?.family] || 'var(--dim)', marginTop:2 }}>
-          {pos?.family?.replace('_', ' ')}
+          {pos?.family?.replace('_', ' ')} - {AM[profile.archetype]?.label}
         </div>
-        {oppIsDominant && <div style={{ fontSize:10, color:'var(--accent)', marginTop:4 }}>Opponent: {oppPosData?.name?.replace(/ \(.*\)/, '')}</div>}
+        {(st === 'defending' || st === 'disadvantaged') && oppPosData && <div style={{ fontSize:10, color: statusColors[st], marginTop:4 }}>Opponent: {oppPosData?.name?.replace(/ \(.*\)/, '')} ({oppStatus})</div>}
+        {st === 'disadvantaged' && <div style={{ fontSize:9, color:'var(--accent)', marginTop:2, fontStyle:'italic' }}>Limited options - get out of here!</div>}
         {lastTurn && <div style={{ marginTop:6, fontSize:10, color:'var(--gold)', fontWeight:500 }} className="fade-in">{lastTurn.description}</div>}
       </div>;
     })()}
