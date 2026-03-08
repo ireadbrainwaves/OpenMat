@@ -1,0 +1,1513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Open Mat — Phase 3</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&family=IBM+Plex+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #080809;
+  --surface: #0d0d10;
+  --surface2: #111116;
+  --border: #1a1a22;
+  --border-bright: #2a2a38;
+  --text: #e8e8f0;
+  --muted: #44445a;
+  --dim: #22222e;
+  --red: #e63946;
+  --red-dim: #1a0608;
+  --red-mid: #3a0d10;
+  --amber: #f4a261;
+  --amber-dim: #1e0f04;
+  --blue: #4895ef;
+  --blue-dim: #0a1525;
+  --green: #52b788;
+  --green-dim: #091912;
+  --gold: #ffd60a;
+  --gold-dim: #1a1100;
+  --white: #f8f8ff;
+  --purple: #9b72cf;
+  --purple-dim: #130d1e;
+}
+
+html, body {
+  height: 100%;
+  background: #040405;
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  gap: 32px;
+}
+
+/* ── PHONE SHELL ── */
+.phone {
+  width: 390px;
+  height: 844px;
+  background: var(--bg);
+  border: 1px solid #1a1a1a;
+  border-radius: 48px;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  box-shadow:
+    0 0 0 1px #0a0a0a,
+    0 60px 140px rgba(0,0,0,0.9),
+    inset 0 1px 0 rgba(255,255,255,0.04);
+  flex-shrink: 0;
+}
+
+.phone::before {
+  content: '';
+  position: absolute;
+  top: 12px; left: 50%; transform: translateX(-50%);
+  width: 120px; height: 34px;
+  background: #040405;
+  border-radius: 20px;
+  z-index: 100;
+}
+.phone::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 15%; right: 15%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--red), transparent);
+  z-index: 101;
+  opacity: 0.6;
+}
+
+/* ── STATUS BAR ── */
+.statusbar {
+  height: 52px;
+  display: flex; align-items: flex-end; justify-content: space-between;
+  padding: 0 32px 8px;
+  flex-shrink: 0; position: relative; z-index: 99;
+}
+.statusbar-time {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px; font-weight: 500; color: var(--text);
+}
+.statusbar-icons { font-size: 11px; color: var(--text); letter-spacing: 2px; }
+
+/* ── SCREEN CONTAINER ── */
+.screen {
+  flex: 1;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  animation: fadeIn 0.25s ease;
+}
+.screen.active { display: flex; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ── SCROLLABLE BODY ── */
+.scroll-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.scroll-body::-webkit-scrollbar { display: none; }
+
+/* ── HEADER ── */
+.screen-header {
+  padding: 14px 24px 16px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+}
+.screen-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; letter-spacing: 3px;
+  color: var(--red); text-transform: uppercase;
+  margin-bottom: 2px;
+}
+.screen-title {
+  font-family: 'Bebas Neue', cursive;
+  font-size: 28px; letter-spacing: 2px;
+  color: var(--white); line-height: 1;
+}
+
+/* ── BTN ── */
+.btn {
+  font-family: 'Bebas Neue', cursive;
+  letter-spacing: 2px;
+  border: none; cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex; align-items: center; justify-content: center;
+  gap: 8px;
+}
+.btn:active { transform: scale(0.97); }
+
+.btn-primary {
+  background: var(--red);
+  color: var(--white);
+  padding: 16px 24px;
+  font-size: 16px;
+  border-radius: 12px;
+  width: 100%;
+}
+.btn-primary:hover { background: #ff4d5a; }
+
+.btn-secondary {
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border-bright);
+  padding: 12px 20px;
+  font-size: 14px;
+  border-radius: 10px;
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  padding: 10px 16px;
+  font-size: 13px;
+  border-radius: 8px;
+}
+
+/* ============================================
+   SCREEN 1: GAME PLAN
+   ============================================ */
+
+#screen-gameplan .scroll-body { padding: 0 0 24px; }
+
+/* Opponent card */
+.opp-card {
+  margin: 16px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex; align-items: center; gap: 14px;
+}
+.opp-avatar {
+  width: 48px; height: 48px;
+  background: var(--dim);
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; flex-shrink: 0;
+}
+.opp-name {
+  font-family: 'Bebas Neue', cursive;
+  font-size: 22px; letter-spacing: 1px; color: var(--white);
+  line-height: 1;
+}
+.opp-meta {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; color: var(--muted);
+  margin-top: 3px;
+}
+.opp-elo {
+  margin-left: auto;
+  text-align: right;
+}
+.elo-num {
+  font-family: 'Bebas Neue', cursive;
+  font-size: 26px; color: var(--amber); line-height: 1;
+}
+.elo-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px; color: var(--muted); letter-spacing: 2px;
+}
+
+/* Scout report */
+.section-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; letter-spacing: 3px; color: var(--muted);
+  text-transform: uppercase;
+  padding: 0 24px;
+  margin-bottom: 10px;
+}
+
+.scout-moves {
+  margin: 0 24px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.scout-move-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.scout-move-row:last-child { border-bottom: none; }
+.scout-star { color: var(--gold); font-size: 14px; flex-shrink: 0; }
+.scout-move-name {
+  font-size: 14px; font-weight: 500; color: var(--text); flex: 1;
+}
+.scout-move-pos {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; color: var(--muted);
+}
+.scout-stat {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; color: var(--amber);
+}
+
+/* Drill slots */
+.drill-slots {
+  margin: 0 24px 16px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.drill-slot {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 13px 16px;
+  display: flex; align-items: center; gap: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  position: relative;
+  overflow: hidden;
+}
+.drill-slot.filled {
+  border-color: rgba(255, 214, 10, 0.3);
+  background: var(--gold-dim);
+}
+.drill-slot.filled::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--gold);
+}
+.drill-slot.empty {
+  border-style: dashed;
+  opacity: 0.5;
+}
+.drill-slot:hover { border-color: var(--border-bright); opacity: 1; }
+.slot-num {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; color: var(--muted);
+  width: 20px; flex-shrink: 0;
+}
+.slot-star { color: var(--gold); font-size: 16px; }
+.slot-name {
+  flex: 1;
+  font-size: 15px; font-weight: 500; color: var(--white);
+}
+.slot-empty-text {
+  flex: 1;
+  font-size: 13px; color: var(--muted); font-style: italic;
+}
+.slot-meta {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; color: var(--muted);
+}
+.slot-remove {
+  font-size: 16px; color: var(--muted);
+  padding: 4px; cursor: pointer;
+}
+
+/* Trained pool */
+.trained-grid {
+  margin: 0 24px 24px;
+  display: flex; flex-wrap: wrap; gap: 8px;
+}
+.trained-chip {
+  background: var(--surface2);
+  border: 1px solid var(--border-bright);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 13px; color: var(--text);
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+}
+.trained-chip:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.trained-chip.selected {
+  background: var(--gold-dim);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.gameplan-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* ============================================
+   SCREEN 2: MATCH / HAND
+   ============================================ */
+
+#screen-match .scroll-body { padding: 0 0 16px; }
+
+/* Match header bar */
+.match-topbar {
+  padding: 12px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+}
+.match-pos-badge {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 2px;
+}
+.match-pos-name {
+  font-family: 'Bebas Neue', cursive;
+  font-size: 20px; letter-spacing: 1px; color: var(--white);
+}
+.match-pos-status {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+}
+.status-dominant { color: var(--green); }
+.status-neutral { color: var(--amber); }
+.status-defending { color: var(--red); }
+.status-disadvantaged { color: #ff6b6b; }
+
+.gp-display {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+}
+.gp-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px; letter-spacing: 2px; color: var(--muted);
+}
+.gp-pips {
+  display: flex; gap: 4px;
+}
+.gp-pip {
+  width: 10px; height: 10px;
+  border-radius: 3px;
+  background: var(--green);
+  transition: background 0.2s;
+}
+.gp-pip.spent { background: var(--dim); }
+
+/* Stance selection */
+.stance-section {
+  margin: 12px 24px;
+}
+.stance-grid {
+  display: flex; gap: 8px;
+}
+.stance-btn {
+  flex: 1; padding: 12px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s;
+  position: relative; overflow: hidden;
+}
+.stance-btn:hover { border-color: var(--border-bright); }
+.stance-btn.selected.attack {
+  border-color: var(--red);
+  background: var(--red-dim);
+}
+.stance-btn.selected.defend {
+  border-color: var(--blue);
+  background: var(--blue-dim);
+}
+.stance-btn.selected.setup {
+  border-color: var(--amber);
+  background: var(--amber-dim);
+}
+.stance-icon { font-size: 20px; display: block; margin-bottom: 4px; }
+.stance-name {
+  font-family: 'Bebas Neue', cursive;
+  font-size: 15px; letter-spacing: 1px;
+  display: block;
+}
+.stance-sub {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px; color: var(--muted);
+  display: block; margin-top: 2px;
+}
+
+/* Opp stance reveal */
+.opp-stance-row {
+  margin: 0 24px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.opp-stance-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; color: var(--muted); letter-spacing: 1px;
+}
+.opp-stance-val {
+  font-family: 'Bebas Neue', cursive;
+  font-size: 17px; letter-spacing: 1px; color: var(--amber);
+}
+.opp-tendency {
+  display: flex; gap: 5px; align-items: center;
+}
+.tendency-dot {
+  width: 8px; height: 8px; border-radius: 2px;
+}
+.t-attack { background: var(--red); }
+.t-defend { background: var(--blue); }
+.t-setup { background: var(--amber); }
+
+/* Hand */
+.hand-section { margin: 0 24px 12px; }
+.hand-title {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; color: var(--muted); letter-spacing: 2px;
+  margin-bottom: 10px; text-transform: uppercase;
+}
+
+.move-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 7px;
+  display: flex; align-items: center; gap: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative; overflow: hidden;
+}
+.move-card::before {
+  content: '';
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: 3px;
+}
+.move-card.tier-drilled::before { background: var(--gold); }
+.move-card.tier-trained::before { background: var(--border-bright); }
+.move-card.tier-known::before { background: var(--dim); }
+
+.move-card.tier-drilled { border-color: rgba(255,214,10,0.2); }
+.move-card.tier-known { opacity: 0.7; }
+
+.move-card:hover { border-color: var(--border-bright); transform: translateX(2px); }
+.move-card.selected {
+  border-color: var(--red);
+  background: var(--red-dim);
+}
+.move-card.selected::before { background: var(--red); }
+
+.move-tier-icon { font-size: 16px; flex-shrink: 0; width: 20px; text-align: center; }
+.move-info { flex: 1; min-width: 0; }
+.move-name {
+  font-size: 14px; font-weight: 500; color: var(--white);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.move-tags {
+  display: flex; gap: 6px; margin-top: 3px; flex-wrap: wrap;
+}
+.move-tag {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px; letter-spacing: 1px;
+  padding: 2px 6px; border-radius: 4px;
+}
+.tag-type-sub { background: rgba(230,57,70,0.15); color: var(--red); }
+.tag-type-trans { background: rgba(72,149,239,0.15); color: var(--blue); }
+.tag-type-sweep { background: rgba(155,114,207,0.15); color: var(--purple); }
+.tag-type-escape { background: rgba(82,183,136,0.15); color: var(--green); }
+.tag-arch { background: rgba(255,214,10,0.1); color: var(--gold); }
+.tag-penalty { background: rgba(255,107,107,0.1); color: #ff6b6b; }
+
+.move-right { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+.move-gp {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px; font-weight: 700;
+  color: var(--green);
+}
+.move-gp.costly { color: var(--amber); }
+.move-gp.very-costly { color: var(--red); }
+.move-gp.discounted { color: var(--gold); }
+.move-gp-original {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; color: var(--muted);
+  text-decoration: line-through;
+}
+.move-dots { display: flex; gap: 3px; }
+.move-dot {
+  width: 7px; height: 7px; border-radius: 2px;
+}
+.dot-filled { background: var(--red); }
+.dot-empty { background: var(--dim); }
+
+/* Bait/Feint toggles */
+.modifiers-row {
+  margin: 0 24px 12px;
+  display: flex; gap: 8px;
+}
+.modifier-toggle {
+  flex: 1; padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.modifier-toggle.active.bait {
+  border-color: var(--amber);
+  background: var(--amber-dim);
+}
+.modifier-toggle.active.feint {
+  border-color: var(--purple);
+  background: var(--purple-dim);
+}
+.mod-icon { font-size: 16px; }
+.mod-label {
+  font-family: 'Bebas Neue', cursive;
+  font-size: 15px; letter-spacing: 1px;
+}
+.mod-sub {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px; color: var(--muted);
+}
+
+/* Counters */
+.counters-section {
+  margin: 0 24px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.counters-header {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; letter-spacing: 2px; color: var(--muted);
+  margin-bottom: 10px; text-transform: uppercase;
+  display: flex; align-items: center; gap: 6px;
+}
+.counter-free-badge {
+  font-size: 9px; background: var(--green-dim);
+  color: var(--green); border: 1px solid rgba(82,183,136,0.2);
+  padding: 1px 6px; border-radius: 4px;
+}
+.counters-list {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.counter-chip {
+  background: var(--dim);
+  border: 1px solid var(--border-bright);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px; font-weight: 500; color: var(--text);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.counter-chip:hover { border-color: var(--green); color: var(--green); }
+.counter-chip.selected { border-color: var(--green); color: var(--green); background: var(--green-dim); }
+
+/* Match footer */
+.match-footer {
+  padding: 12px 24px 20px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+}
+.lock-in-btn {
+  background: var(--red);
+  color: var(--white);
+  padding: 15px 24px;
+  border-radius: 12px;
+  font-size: 16px; width: 100%;
+  font-family: 'Bebas Neue', cursive;
+  letter-spacing: 2px;
+  border: none; cursor: pointer;
+  transition: all 0.15s;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.lock-in-btn:hover { background: #ff4d5a; }
+.lock-in-btn:disabled { background: var(--dim); color: var(--muted); cursor: not-allowed; }
+
+/* ============================================
+   SCREEN 3: POST-MATCH PROGRESSION
+   ============================================ */
+
+#screen-result .scroll-body { padding: 0 0 24px; }
+
+/* Result hero */
+.result-hero {
+  padding: 24px 24px 20px;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: radial-gradient(ellipse at 50% 0%, rgba(230,57,70,0.08) 0%, transparent 70%);
+}
+.result-outcome {
+  font-family: 'Bebas Neue', cursive;
+  font-size: 52px; letter-spacing: 4px; line-height: 1;
+  color: var(--green);
+}
+.result-method {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px; color: var(--amber);
+  margin-top: 4px; letter-spacing: 1px;
+}
+.result-elo-row {
+  display: flex; align-items: center; justify-content: center; gap: 16px;
+  margin-top: 16px;
+}
+.elo-before {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 18px; color: var(--muted);
+}
+.elo-arrow {
+  font-size: 20px; color: var(--green);
+}
+.elo-after {
+  font-family: 'Bebas Neue', cursive;
+  font-size: 36px; color: var(--white); letter-spacing: 1px;
+}
+.elo-delta {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px; color: var(--green);
+  background: var(--green-dim);
+  border: 1px solid rgba(82,183,136,0.2);
+  padding: 3px 10px; border-radius: 6px;
+}
+
+/* Technique progress */
+.progress-section { padding: 20px 24px 0; }
+.progress-item {
+  margin-bottom: 16px;
+}
+.progress-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 7px;
+}
+.progress-move-name {
+  font-size: 14px; font-weight: 500; color: var(--text);
+  display: flex; align-items: center; gap: 8px;
+}
+.progress-tier-badge {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px; letter-spacing: 1px;
+  padding: 2px 7px; border-radius: 4px;
+}
+.badge-drilled { background: var(--gold-dim); color: var(--gold); border: 1px solid rgba(255,214,10,0.2); }
+.badge-trained { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+.badge-known { background: var(--dim); color: var(--muted); border: 1px solid var(--border); }
+
+.progress-count {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; color: var(--muted);
+}
+.progress-bar-track {
+  height: 6px;
+  background: var(--dim);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.fill-gold { background: linear-gradient(90deg, #ffd60a, #ffee77); }
+.fill-blue { background: linear-gradient(90deg, var(--blue), #89c4f4); }
+.fill-muted { background: var(--muted); }
+
+/* Promotion banner */
+.promotion-banner {
+  margin: 0 24px 16px;
+  background: linear-gradient(135deg, var(--blue-dim), rgba(72,149,239,0.05));
+  border: 1px solid rgba(72,149,239,0.3);
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex; align-items: center; gap: 12px;
+}
+.promo-icon { font-size: 28px; flex-shrink: 0; }
+.promo-text { flex: 1; }
+.promo-title {
+  font-family: 'Bebas Neue', cursive;
+  font-size: 18px; letter-spacing: 1px; color: var(--blue);
+}
+.promo-sub {
+  font-size: 12px; color: var(--muted); margin-top: 2px;
+}
+
+/* Unlock banner */
+.unlock-banner {
+  margin: 0 24px 16px;
+  background: linear-gradient(135deg, var(--green-dim), rgba(82,183,136,0.05));
+  border: 1px solid rgba(82,183,136,0.3);
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex; align-items: center; gap: 12px;
+}
+.unlock-icon { font-size: 28px; flex-shrink: 0; }
+.unlock-text { flex: 1; }
+.unlock-title {
+  font-family: 'Bebas Neue', cursive;
+  font-size: 18px; letter-spacing: 1px; color: var(--green);
+}
+.unlock-sub {
+  font-size: 12px; color: var(--muted); margin-top: 2px;
+}
+
+/* Play-by-play */
+.pbp-section { padding: 0 24px 0; }
+.pbp-row {
+  display: flex; gap: 12px; padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  align-items: flex-start;
+}
+.pbp-row:last-child { border-bottom: none; }
+.pbp-turn {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; color: var(--muted);
+  width: 32px; flex-shrink: 0; padding-top: 1px;
+}
+.pbp-content { flex: 1; }
+.pbp-move { font-size: 13px; font-weight: 500; color: var(--text); }
+.pbp-detail { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.pbp-result {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; padding: 2px 7px; border-radius: 4px;
+  flex-shrink: 0;
+}
+.pbp-win { background: var(--green-dim); color: var(--green); }
+.pbp-loss { background: var(--red-dim); color: var(--red); }
+.pbp-neutral { background: var(--dim); color: var(--muted); }
+.pbp-pos { background: var(--blue-dim); color: var(--blue); }
+
+/* Result footer */
+.result-footer {
+  padding: 16px 24px 24px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  display: flex; gap: 10px;
+}
+
+/* ── BOTTOM NAV ── */
+.bottom-nav {
+  height: 80px;
+  display: flex;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--surface);
+  padding-bottom: 12px;
+}
+.nav-item {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 4px;
+  cursor: pointer; transition: color 0.15s;
+  color: var(--muted);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
+}
+.nav-item.active { color: var(--red); }
+.nav-item:hover { color: var(--text); }
+.nav-icon { font-size: 20px; }
+
+/* ── DIVIDER ── */
+.divider {
+  height: 1px; background: var(--border);
+  margin: 12px 24px;
+}
+
+/* ── LABEL ROWS ── */
+.inline-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; letter-spacing: 2px; color: var(--muted);
+  text-transform: uppercase; margin-bottom: 8px;
+}
+
+/* Animated glow on selected move */
+@keyframes selectedPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(230,57,70,0); }
+  50% { box-shadow: 0 0 0 4px rgba(230,57,70,0.12); }
+}
+.move-card.selected { animation: selectedPulse 2s ease infinite; }
+
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════
+     PHONE 1: GAME PLAN
+     ══════════════════════════════════════ -->
+<div class="phone" id="phone-gameplan">
+  <div class="statusbar">
+    <span class="statusbar-time" id="time1">9:41</span>
+    <span class="statusbar-icons">▲▲▲ ⬡ ⬡⬡</span>
+  </div>
+
+  <div class="screen active" id="screen-gameplan">
+    <div class="screen-header">
+      <div class="screen-label">Pre-Match</div>
+      <div class="screen-title">GAME PLAN</div>
+    </div>
+
+    <div class="scroll-body">
+      <!-- Opponent -->
+      <div style="padding: 16px 24px 0">
+        <div class="inline-label">Your Opponent</div>
+      </div>
+      <div class="opp-card">
+        <div class="opp-avatar">🥋</div>
+        <div>
+          <div class="opp-name">Iron Mike</div>
+          <div class="opp-meta">WRESTLER · BLUE BELT</div>
+        </div>
+        <div class="opp-elo">
+          <div class="elo-num">1,318</div>
+          <div class="elo-label">ELO</div>
+        </div>
+      </div>
+
+      <!-- Scout: their drills -->
+      <div style="padding: 14px 24px 0">
+        <div class="inline-label">Their Drilled Moves</div>
+      </div>
+      <div class="scout-moves">
+        <div class="scout-move-row">
+          <span class="scout-star">★</span>
+          <span class="scout-move-name">Double Leg Takedown</span>
+          <span class="scout-move-pos">Standing</span>
+          <span class="scout-stat">8/11</span>
+        </div>
+        <div class="scout-move-row">
+          <span class="scout-star">★</span>
+          <span class="scout-move-name">Kimura</span>
+          <span class="scout-move-pos">Side Control</span>
+          <span class="scout-stat">5/8</span>
+        </div>
+        <div class="scout-move-row">
+          <span class="scout-star">★</span>
+          <span class="scout-move-name">Americana</span>
+          <span class="scout-move-pos">Mount</span>
+          <span class="scout-stat">4/7</span>
+        </div>
+      </div>
+
+      <!-- Your drill slots -->
+      <div style="padding: 0 24px 0">
+        <div class="inline-label">Your Drill Slots</div>
+      </div>
+      <div class="drill-slots" id="drill-slots">
+        <div class="drill-slot filled" data-slot="0" onclick="removeFromSlot(0)">
+          <span class="slot-num">01</span>
+          <span class="slot-star">★</span>
+          <span class="slot-name">Armbar</span>
+          <span class="slot-meta">Closed Guard · +15%</span>
+          <span class="slot-remove">×</span>
+        </div>
+        <div class="drill-slot filled" data-slot="1" onclick="removeFromSlot(1)">
+          <span class="slot-num">02</span>
+          <span class="slot-star">★</span>
+          <span class="slot-name">Triangle Choke</span>
+          <span class="slot-meta">Closed Guard · +15%</span>
+          <span class="slot-remove">×</span>
+        </div>
+        <div class="drill-slot filled" data-slot="2" onclick="removeFromSlot(2)">
+          <span class="slot-num">03</span>
+          <span class="slot-star">★</span>
+          <span class="slot-name">Sprawl</span>
+          <span class="slot-meta">Standing · +15%</span>
+          <span class="slot-remove">×</span>
+        </div>
+        <div class="drill-slot empty" data-slot="3" onclick="addToSlot(3)">
+          <span class="slot-num">04</span>
+          <span class="slot-empty-text">— tap a trained move to drill it —</span>
+        </div>
+      </div>
+
+      <!-- Trained pool -->
+      <div style="padding: 8px 24px 0">
+        <div class="inline-label">Your Trained Moves</div>
+      </div>
+      <div class="trained-grid" id="trained-pool">
+        <div class="trained-chip" onclick="tryDrill(this, 'Guillotine')">Guillotine</div>
+        <div class="trained-chip" onclick="tryDrill(this, 'Hip Escape')">Hip Escape</div>
+        <div class="trained-chip" onclick="tryDrill(this, 'Sweep')">Sweep</div>
+        <div class="trained-chip" onclick="tryDrill(this, 'Guard Pull')">Guard Pull</div>
+        <div class="trained-chip" onclick="tryDrill(this, 'Omoplata')">Omoplata</div>
+        <div class="trained-chip" onclick="tryDrill(this, 'Kimura')">Kimura</div>
+        <div class="trained-chip" onclick="tryDrill(this, 'Stack Pass')">Stack Pass</div>
+        <div class="trained-chip" onclick="tryDrill(this, 'Rear Naked Choke')">Rear Naked Choke</div>
+        <div class="trained-chip" onclick="tryDrill(this, 'Ankle Lock')">Ankle Lock</div>
+        <div class="trained-chip" onclick="tryDrill(this, 'X-Guard Sweep')">X-Guard Sweep</div>
+      </div>
+
+      <div style="height: 16px;"></div>
+    </div>
+
+    <div class="gameplan-footer">
+      <button class="btn btn-primary" onclick="goToMatch()">
+        ⚔ READY — START MATCH
+      </button>
+    </div>
+  </div>
+
+  <div class="bottom-nav">
+    <div class="nav-item" onclick="navigate('home')"><span class="nav-icon">⌂</span>Home</div>
+    <div class="nav-item active"><span class="nav-icon">⚔</span>Match</div>
+    <div class="nav-item" onclick="navigate('deck')"><span class="nav-icon">♦</span>Deck</div>
+    <div class="nav-item" onclick="navigate('gym')"><span class="nav-icon">⬡</span>Gym</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     PHONE 2: MATCH HAND
+     ══════════════════════════════════════ -->
+<div class="phone" id="phone-match">
+  <div class="statusbar">
+    <span class="statusbar-time" id="time2">9:41</span>
+    <span class="statusbar-icons">▲▲▲ ⬡ ⬡⬡</span>
+  </div>
+
+  <div class="screen active" id="screen-match">
+
+    <!-- Position + GP bar -->
+    <div class="match-topbar">
+      <div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px;">Position</div>
+        <div class="match-pos-name">CLOSED GUARD</div>
+        <div class="match-pos-status status-dominant">● DOMINANT</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:2px;margin-bottom:4px;">TURN</div>
+        <div style="font-family:'Bebas Neue',cursive;font-size:28px;color:var(--white);">4</div>
+      </div>
+      <div class="gp-display">
+        <div class="gp-label">GRIP POINTS</div>
+        <div class="gp-pips" id="gp-pips">
+          <div class="gp-pip"></div>
+          <div class="gp-pip"></div>
+          <div class="gp-pip"></div>
+          <div class="gp-pip"></div>
+          <div class="gp-pip"></div>
+          <div class="gp-pip"></div>
+          <div class="gp-pip"></div>
+          <div class="gp-pip"></div>
+          <div class="gp-pip spent"></div>
+          <div class="gp-pip spent"></div>
+          <div class="gp-pip spent"></div>
+          <div class="gp-pip spent"></div>
+        </div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--green);">8 / 12</div>
+      </div>
+    </div>
+
+    <div class="scroll-body">
+
+      <!-- Phase 1: Stance -->
+      <div class="stance-section" id="stance-section">
+        <div class="inline-label" style="margin-bottom:10px;">Phase 1 — Choose Stance</div>
+        <div class="stance-grid">
+          <div class="stance-btn attack" id="stance-attack" onclick="selectStance('attack')">
+            <span class="stance-icon">⚔</span>
+            <span class="stance-name">ATTACK</span>
+            <span class="stance-sub">Go for the finish</span>
+          </div>
+          <div class="stance-btn defend selected defend" id="stance-defend" onclick="selectStance('defend')">
+            <span class="stance-icon">🛡</span>
+            <span class="stance-name">DEFEND</span>
+            <span class="stance-sub">+15% defense</span>
+          </div>
+          <div class="stance-btn setup" id="stance-setup" onclick="selectStance('setup')">
+            <span class="stance-icon">♟</span>
+            <span class="stance-name">SETUP</span>
+            <span class="stance-sub">Build position</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Opponent stance reveal -->
+      <div class="opp-stance-row">
+        <div>
+          <div class="opp-stance-label">OPP STANCE (LAST TURN)</div>
+          <div class="opp-stance-val">ATTACK</div>
+        </div>
+        <div style="text-align:right;">
+          <div class="opp-stance-label" style="margin-bottom:5px;">TENDENCY</div>
+          <div class="opp-tendency">
+            <div class="tendency-dot t-attack" title="Attack"></div>
+            <div class="tendency-dot t-attack" title="Attack"></div>
+            <div class="tendency-dot t-setup" title="Setup"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 2: Hand -->
+      <div class="hand-section">
+        <div class="hand-title">Phase 2 — Your Hand</div>
+
+        <!-- Drilled moves -->
+        <div class="move-card tier-drilled" id="card-armbar" onclick="selectMove('armbar')">
+          <span class="move-tier-icon">★</span>
+          <div class="move-info">
+            <div class="move-name">Armbar</div>
+            <div class="move-tags">
+              <span class="move-tag tag-type-sub">SUBMISSION</span>
+              <span class="move-tag tag-arch">SUB HUNTER +12%</span>
+            </div>
+          </div>
+          <div class="move-right">
+            <div>
+              <div class="move-gp-original">3 GP</div>
+              <div class="move-gp discounted">2 GP</div>
+            </div>
+            <div class="move-dots">
+              <div class="move-dot dot-filled"></div>
+              <div class="move-dot dot-filled"></div>
+              <div class="move-dot dot-filled"></div>
+              <div class="move-dot dot-empty"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="move-card tier-drilled selected" id="card-triangle" onclick="selectMove('triangle')">
+          <span class="move-tier-icon">★</span>
+          <div class="move-info">
+            <div class="move-name">Triangle Choke</div>
+            <div class="move-tags">
+              <span class="move-tag tag-type-sub">SUBMISSION</span>
+              <span class="move-tag tag-arch">SUB HUNTER +12%</span>
+            </div>
+          </div>
+          <div class="move-right">
+            <div>
+              <div class="move-gp-original">3 GP</div>
+              <div class="move-gp discounted">2 GP</div>
+            </div>
+            <div class="move-dots">
+              <div class="move-dot dot-filled"></div>
+              <div class="move-dot dot-filled"></div>
+              <div class="move-dot dot-filled"></div>
+              <div class="move-dot dot-empty"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="move-card tier-drilled" id="card-sprawl" onclick="selectMove('sprawl')">
+          <span class="move-tier-icon">★</span>
+          <div class="move-info">
+            <div class="move-name">Sprawl</div>
+            <div class="move-tags">
+              <span class="move-tag tag-type-escape">DEFENSE</span>
+            </div>
+          </div>
+          <div class="move-right">
+            <div>
+              <div class="move-gp-original" style="visibility:hidden;">— GP</div>
+              <div class="move-gp discounted">1 GP</div>
+            </div>
+            <div class="move-dots">
+              <div class="move-dot dot-filled"></div>
+              <div class="move-dot dot-filled"></div>
+              <div class="move-dot dot-empty"></div>
+              <div class="move-dot dot-empty"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Trained moves -->
+        <div class="move-card tier-trained" id="card-hipescape" onclick="selectMove('hipescape')">
+          <span class="move-tier-icon" style="color:var(--muted);">–</span>
+          <div class="move-info">
+            <div class="move-name">Hip Escape</div>
+            <div class="move-tags">
+              <span class="move-tag tag-type-escape">ESCAPE</span>
+            </div>
+          </div>
+          <div class="move-right">
+            <div>
+              <div class="move-gp-original" style="visibility:hidden;">—</div>
+              <div class="move-gp">1 GP</div>
+            </div>
+            <div class="move-dots">
+              <div class="move-dot dot-filled"></div>
+              <div class="move-dot dot-filled"></div>
+              <div class="move-dot dot-empty"></div>
+              <div class="move-dot dot-empty"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="move-card tier-trained" id="card-sweep" onclick="selectMove('sweep')">
+          <span class="move-tier-icon" style="color:var(--muted);">–</span>
+          <div class="move-info">
+            <div class="move-name">Scissor Sweep</div>
+            <div class="move-tags">
+              <span class="move-tag tag-type-sweep">SWEEP</span>
+            </div>
+          </div>
+          <div class="move-right">
+            <div>
+              <div class="move-gp-original" style="visibility:hidden;">—</div>
+              <div class="move-gp costly">2 GP</div>
+            </div>
+            <div class="move-dots">
+              <div class="move-dot dot-filled"></div>
+              <div class="move-dot dot-filled"></div>
+              <div class="move-dot dot-filled"></div>
+              <div class="move-dot dot-empty"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Known move -->
+        <div class="move-card tier-known" id="card-imanari" onclick="selectMove('imanari')">
+          <span class="move-tier-icon" style="color:var(--dim);">░</span>
+          <div class="move-info">
+            <div class="move-name">Imanari Roll</div>
+            <div class="move-tags">
+              <span class="move-tag tag-type-trans">TRANSITION</span>
+              <span class="move-tag tag-penalty">-10% · KNOWN</span>
+            </div>
+          </div>
+          <div class="move-right">
+            <div>
+              <div class="move-gp-original">2 GP</div>
+              <div class="move-gp very-costly">3 GP</div>
+            </div>
+            <div class="move-dots">
+              <div class="move-dot dot-filled"></div>
+              <div class="move-dot dot-filled"></div>
+              <div class="move-dot dot-empty"></div>
+              <div class="move-dot dot-empty"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bait / Feint -->
+      <div class="modifiers-row">
+        <div class="modifier-toggle bait" id="toggle-bait" onclick="toggleMod('bait')">
+          <span class="mod-icon">🪤</span>
+          <div>
+            <div class="mod-label" style="color:var(--muted);">BAIT</div>
+            <div class="mod-sub">Lure their stance</div>
+          </div>
+        </div>
+        <div class="modifier-toggle feint active feint" id="toggle-feint" onclick="toggleMod('feint')">
+          <span class="mod-icon">👁</span>
+          <div>
+            <div class="mod-label" style="color:var(--purple);">FEINT</div>
+            <div class="mod-sub">Hide your move</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Counters -->
+      <div class="counters-section">
+        <div class="counters-header">
+          Counters
+          <span class="counter-free-badge">FREE</span>
+        </div>
+        <div class="counters-list">
+          <div class="counter-chip" onclick="selectCounter(this)">Posture Up</div>
+          <div class="counter-chip selected" onclick="selectCounter(this)">Strip Grips</div>
+          <div class="counter-chip" onclick="selectCounter(this)">Leg Extract</div>
+          <div class="counter-chip" onclick="selectCounter(this)">Frame & Shrimp</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="match-footer">
+      <button class="lock-in-btn" onclick="goToResult()">
+        🔒 LOCK IN: TRIANGLE CHOKE
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     PHONE 3: POST-MATCH RESULT
+     ══════════════════════════════════════ -->
+<div class="phone" id="phone-result">
+  <div class="statusbar">
+    <span class="statusbar-time" id="time3">9:41</span>
+    <span class="statusbar-icons">▲▲▲ ⬡ ⬡⬡</span>
+  </div>
+
+  <div class="screen active" id="screen-result">
+    <!-- Hero -->
+    <div class="result-hero">
+      <div class="result-outcome">VICTORY</div>
+      <div class="result-method">⚑ SUBMISSION — TRIANGLE CHOKE · TURN 7</div>
+      <div class="result-elo-row">
+        <div class="elo-before">1,287</div>
+        <div class="elo-arrow">→</div>
+        <div class="elo-after">1,312</div>
+        <div class="elo-delta">+25</div>
+      </div>
+    </div>
+
+    <div class="scroll-body">
+
+      <!-- Technique Progress -->
+      <div class="progress-section">
+        <div class="inline-label">Technique Progress</div>
+
+        <div class="progress-item">
+          <div class="progress-header">
+            <div class="progress-move-name">
+              Triangle Choke
+              <span class="progress-tier-badge badge-drilled">★ DRILLED</span>
+            </div>
+            <div class="progress-count">8 / 10 uses</div>
+          </div>
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill fill-gold" style="width: 80%"></div>
+          </div>
+        </div>
+
+        <div class="progress-item">
+          <div class="progress-header">
+            <div class="progress-move-name">
+              Armbar
+              <span class="progress-tier-badge badge-drilled">★ DRILLED</span>
+            </div>
+            <div class="progress-count">5 / 10 uses</div>
+          </div>
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill fill-gold" style="width: 50%"></div>
+          </div>
+        </div>
+
+        <div class="progress-item">
+          <div class="progress-header">
+            <div class="progress-move-name">
+              Hip Escape
+              <span class="progress-tier-badge badge-trained">TRAINED</span>
+            </div>
+            <div class="progress-count">5 / 5 ✓</div>
+          </div>
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill fill-blue" style="width: 100%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Promotion -->
+      <div style="height:16px;"></div>
+      <div class="promotion-banner">
+        <div class="promo-icon">⬆</div>
+        <div class="promo-text">
+          <div class="promo-title">HIP ESCAPE PROMOTED</div>
+          <div class="promo-sub">Known → Trained · 5 successful uses</div>
+        </div>
+      </div>
+
+      <!-- New unlock -->
+      <div class="unlock-banner">
+        <div class="unlock-icon">🔓</div>
+        <div class="unlock-text">
+          <div class="unlock-title">NEW MOVE LEARNED</div>
+          <div class="unlock-sub">Double Leg from opponent's drills → added to your Known pool</div>
+        </div>
+      </div>
+
+      <!-- Play by play -->
+      <div style="padding: 0 24px;">
+        <div class="inline-label">Play by Play</div>
+      </div>
+      <div class="pbp-section">
+        <div class="pbp-row">
+          <div class="pbp-turn">T1</div>
+          <div class="pbp-content">
+            <div class="pbp-move">Guard Pull vs Double Leg</div>
+            <div class="pbp-detail">Escape beats transition</div>
+          </div>
+          <div class="pbp-result pbp-pos">Closed Guard</div>
+        </div>
+        <div class="pbp-row">
+          <div class="pbp-turn">T2</div>
+          <div class="pbp-content">
+            <div class="pbp-move">Armbar attempt</div>
+            <div class="pbp-detail">Defended — Posture Up (72% defense)</div>
+          </div>
+          <div class="pbp-result pbp-neutral">Blocked</div>
+        </div>
+        <div class="pbp-row">
+          <div class="pbp-turn">T3</div>
+          <div class="pbp-content">
+            <div class="pbp-move">Hip Escape</div>
+            <div class="pbp-detail">Position maintained · +1 use</div>
+          </div>
+          <div class="pbp-result pbp-pos">Half Guard</div>
+        </div>
+        <div class="pbp-row">
+          <div class="pbp-turn">T4</div>
+          <div class="pbp-content">
+            <div class="pbp-move">Scissor Sweep</div>
+            <div class="pbp-detail">Caught bait! Opp was in defend</div>
+          </div>
+          <div class="pbp-result pbp-win">+2 pts</div>
+        </div>
+        <div class="pbp-row">
+          <div class="pbp-turn">T7</div>
+          <div class="pbp-content">
+            <div class="pbp-move">Triangle Choke ★</div>
+            <div class="pbp-detail">Drilled · Sub Hunter +12% · Feint active</div>
+          </div>
+          <div class="pbp-result pbp-win">TAP ✓</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="result-footer">
+      <button class="btn btn-secondary" style="flex:1" onclick="goToGamePlan()">
+        🔁 REMATCH
+      </button>
+      <button class="btn btn-primary" style="flex:2" onclick="goToLobby()">
+        ⌂ BACK TO LOBBY
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── CLOCK ──
+function updateTime() {
+  const now = new Date();
+  const t = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+  document.getElementById('time1').textContent = t;
+  document.getElementById('time2').textContent = t;
+  document.getElementById('time3').textContent = t;
+}
+updateTime();
+setInterval(updateTime, 30000);
+
+// ── GAME PLAN LOGIC ──
+const drillSlots = ['Armbar', 'Triangle Choke', 'Sprawl', null];
+const trainedMoves = ['Guillotine','Hip Escape','Sweep','Guard Pull','Omoplata','Kimura','Stack Pass','Rear Naked Choke','Ankle Lock','X-Guard Sweep'];
+
+function renderDrillSlots() {
+  const container = document.getElementById('drill-slots');
+  container.innerHTML = '';
+  drillSlots.forEach((move, i) => {
+    const slot = document.createElement('div');
+    slot.className = 'drill-slot ' + (move ? 'filled' : 'empty');
+    slot.dataset.slot = i;
+    if (move) {
+      slot.innerHTML = `
+        <span class="slot-num">0${i+1}</span>
+        <span class="slot-star">★</span>
+        <span class="slot-name">${move}</span>
+        <span class="slot-meta" style="flex:1">+15% · −1 GP</span>
+        <span class="slot-remove" onclick="removeFromSlot(${i})">×</span>`;
+    } else {
+      slot.innerHTML = `
+        <span class="slot-num">0${i+1}</span>
+        <span class="slot-empty-text">— tap a trained move to drill it —</span>`;
+    }
+    container.appendChild(slot);
+  });
+}
+
+function removeFromSlot(idx) {
+  const move = drillSlots[idx];
+  if (!move) return;
+  drillSlots[idx] = null;
+  // un-select in trained pool
+  document.querySelectorAll('.trained-chip').forEach(c => {
+    if (c.textContent === move) c.classList.remove('selected');
+  });
+  renderDrillSlots();
+}
+
+function tryDrill(el, moveName) {
+  // find empty slot
+  const emptyIdx = drillSlots.findIndex(s => s === null);
+  if (el.classList.contains('selected')) {
+    // remove
+    const idx = drillSlots.indexOf(moveName);
+    if (idx !== -1) { drillSlots[idx] = null; el.classList.remove('selected'); renderDrillSlots(); }
+    return;
+  }
+  if (emptyIdx === -1) {
+    el.style.borderColor = 'var(--red)';
+    setTimeout(() => el.style.borderColor = '', 600);
+    return;
+  }
+  drillSlots[emptyIdx] = moveName;
+  el.classList.add('selected');
+  renderDrillSlots();
+}
+
+function addToSlot(idx) { /* handled by tryDrill */ }
+
+// ── MATCH LOGIC ──
+let selectedStance = 'defend';
+let selectedMove = 'triangle';
+let baitActive = false;
+let feintActive = true;
+let selectedCounter = 'Strip Grips';
+
+function selectStance(stance) {
+  selectedStance = stance;
+  document.querySelectorAll('.stance-btn').forEach(b => b.classList.remove('selected'));
+  document.getElementById('stance-' + stance).classList.add('selected');
+}
+
+function selectMove(id) {
+  document.querySelectorAll('.move-card').forEach(c => c.classList.remove('selected'));
+  const card = document.getElementById('card-' + id);
+  if (card) card.classList.add('selected');
+  selectedMove = id;
+  // Update lock-in button
+  const names = {
+    armbar: 'ARMBAR',
+    triangle: 'TRIANGLE CHOKE',
+    sprawl: 'SPRAWL',
+    hipescape: 'HIP ESCAPE',
+    sweep: 'SCISSOR SWEEP',
+    imanari: 'IMANARI ROLL'
+  };
+  document.querySelector('.lock-in-btn').textContent = '🔒 LOCK IN: ' + (names[id] || id.toUpperCase());
+}
+
+function toggleMod(mod) {
+  const el = document.getElementById('toggle-' + mod);
+  el.classList.toggle('active');
+  if (mod === 'bait') baitActive = !baitActive;
+  else feintActive = !feintActive;
+}
+
+function selectCounter(el) {
+  document.querySelectorAll('.counter-chip').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+// ── NAV ──
+function goToMatch() {
+  // already shown in phone-match
+  pulse(document.querySelector('#phone-match'));
+}
+
+function goToResult() {
+  pulse(document.querySelector('#phone-result'));
+}
+
+function goToGamePlan() {
+  pulse(document.querySelector('#phone-gameplan'));
+}
+
+function goToLobby() {
+  pulse(document.querySelector('#phone-gameplan'));
+}
+
+function navigate(tab) {
+  // placeholder for nav items
+}
+
+function pulse(el) {
+  el.style.boxShadow = '0 0 0 2px var(--red), 0 60px 140px rgba(0,0,0,0.9)';
+  setTimeout(() => {
+    el.style.boxShadow = '0 0 0 1px #0a0a0a, 0 60px 140px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.04)';
+  }, 500);
+}
+
+// init
+renderDrillSlots();
+</script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 """
-Open Mat - AI Bot Engine v2
+Open Mat - AI Bot Engine v3 — Hand System + Mastery
 ============================
 Uses service role key to run AI matches directly.
 No auth login needed - operates as admin.
@@ -84,8 +84,15 @@ def load_graph():
     for t in techniques.values():
         tech_from.setdefault(t['from_position'], []).append(t)
 
+    # Load archetype mastery
+    mastery = {}
+    for row in db_get('archetype_mastery', 'select=*'):
+        mastery.setdefault(row['archetype'], {})[row['move_type']] = {
+            'success_mod': row['success_modifier'], 'gp_mod': row['gp_modifier']
+        }
+
     return {'positions': positions, 'techniques': techniques, 'counters': counters,
-            'matrix': matrix, 'tech_from': tech_from}
+            'matrix': matrix, 'tech_from': tech_from, 'mastery': mastery}
 
 
 def get_status(graph, pos_id, archetype):
@@ -103,6 +110,63 @@ def get_moves(graph, pos_id, belt, deck, archetype, overtime=False):
         if status in ('defending', 'disadvantaged') and t['type'] != 'escape': continue
         moves.append(t)
     return moves
+
+
+
+def draw_hand(graph, pos_id, belt, deck, deck_tier, archetype, status):
+    """Draw a hand of moves based on tier system."""
+    belt_lvl = BELT_ORDER.get(belt, 1)
+    all_pos_moves = []
+    for t in graph['tech_from'].get(pos_id, []):
+        if BELT_ORDER.get(t['belt_unlock'], 1) > belt_lvl: continue
+        if t['id'] not in deck: continue
+        if status in ('defending', 'disadvantaged') and t['type'] != 'escape': continue
+        all_pos_moves.append(t)
+    
+    if not all_pos_moves:
+        return all_pos_moves  # empty hand, fallback will handle
+    
+    hand = []
+    used_ids = set()
+    
+    # Drilled moves: always in hand
+    for m in all_pos_moves:
+        if deck_tier.get(m['id']) == 'drilled':
+            hand.append(m)
+            used_ids.add(m['id'])
+    
+    # Trained moves: 2-3 random
+    trained_count = 3 if status == 'dominant' else 2 if status in ('neutral', 'defending') else 1
+    trained = [m for m in all_pos_moves if deck_tier.get(m['id'], 'trained') == 'trained' and m['id'] not in used_ids]
+    random.shuffle(trained)
+    for m in trained[:trained_count]:
+        hand.append(m)
+        used_ids.add(m['id'])
+    
+    # Known moves: 0-1 (15% chance)
+    if status in ('dominant', 'neutral') and random.random() < 0.15:
+        known = [m for m in all_pos_moves if deck_tier.get(m['id']) == 'known' and m['id'] not in used_ids]
+        if known:
+            hand.append(random.choice(known))
+    
+    # Fallback: if hand empty, use any available
+    if not hand:
+        hand = all_pos_moves[:3]
+    
+    return hand
+
+
+def get_mastery_mod(graph, archetype, move_type):
+    """Get archetype mastery modifier for a move type."""
+    return graph.get('mastery', {}).get(archetype, {}).get(move_type, {'success_mod': 0, 'gp_mod': 0})
+
+
+def get_effective_gp_cost(tech, archetype, tier, graph):
+    """Calculate GP cost with mastery and tier modifiers."""
+    base = tech.get('gp_cost', {'submission':3,'sweep':2,'takedown':2,'transition':1,'escape':1}.get(tech['type'], 1))
+    mastery = get_mastery_mod(graph, archetype, tech['type'])
+    tier_mod = -1 if tier == 'drilled' else (1 if tier == 'known' else 0)
+    return max(1, base + mastery.get('gp_mod', 0) + tier_mod)
 
 
 # ===== AI BRAIN =====
@@ -129,12 +193,16 @@ def ai_pick_stance(status, gp=10):
         return 'defend' if r < 0.7 else 'setup' if r < 0.9 else 'attack'
 
 
-def ai_pick_move(graph, pos_id, belt, deck, archetype, opp_stance, counters, opp_pos=None, opp_archetype=None, my_gp=10):
-    moves = get_moves(graph, pos_id, belt, deck, archetype)
-    # Filter by GP cost - can't pick moves you can't afford
-    affordable = [m for m in moves if m.get('gp_cost', 1) <= my_gp]
+def ai_pick_move(graph, pos_id, belt, deck, deck_tier, archetype, opp_stance, counters, opp_pos=None, opp_archetype=None, my_gp=10, hand=None):
+    # Use hand if provided, otherwise fallback to full deck
+    moves = hand if hand else get_moves(graph, pos_id, belt, deck, archetype)
+    # Filter by effective GP cost
+    affordable = [m for m in moves if get_effective_gp_cost(m, archetype, deck_tier.get(m['id'], 'trained'), graph) <= my_gp]
     if not affordable:
-        affordable = moves  # fallback if somehow everything is too expensive
+        affordable = moves
+    
+    # Prefer drilled moves (sort drilled first)
+    affordable.sort(key=lambda m: 0 if deck_tier.get(m['id']) == 'drilled' else 1)
     
     subs = [m for m in affordable if m['type'] == 'submission']
     escapes = [m for m in affordable if m['type'] == 'escape']
@@ -225,10 +293,11 @@ def resolve_turn_local(graph, match, p1_move_id, p1_is_counter, p2_move_id, p2_i
               'result_type': 'hold_position', 'p1_gp': new_p1_gp, 'p2_gp': new_p2_gp,
               'p1_chain': p1_chain, 'p2_chain': p2_chain, 'p1_gp_cost': p1_gp_cost, 'p2_gp_cost': p2_gp_cost}
 
-    # P1 sub
+    # P1 sub — apply mastery + tier bonuses
     if p1_tech and p1_tech['type'] == 'submission' and (not p2_tech or p2_tech['type'] != 'submission'):
         cc = p2_move_id in (p1_tech.get('counters') or [])
-        dc = (0.75 if cc else 0.25 if p2_is_c else 0.20 if (p2_tech and p2_tech['type'] == 'escape') else 0.05) + p2_def_bonus - p1_cb
+        p1_mastery = get_mastery_mod(graph, p1_info['archetype'], 'submission').get('success_mod', 0)
+        dc = (0.75 if cc else 0.25 if p2_is_c else 0.20 if (p2_tech and p2_tech['type'] == 'escape') else 0.05) + p2_def_bonus - p1_cb - p1_mastery
         if p2_gp <= 2: dc -= 0.15
         dc = max(0.0, min(0.95, dc))
         if random.random() < dc:
@@ -238,10 +307,11 @@ def resolve_turn_local(graph, match, p1_move_id, p1_is_counter, p2_move_id, p2_i
             result['desc'] = f"{p1_info['name']} locks in {p1_tech['name']}! Sub minigame!"
             if p1_chain >= 3: result['desc'] += f' ({p1_chain}-chain!)'
             result['result_type'] = 'position_change'
-    # P2 sub
+    # P2 sub — apply mastery + tier bonuses
     elif p2_tech and p2_tech['type'] == 'submission' and (not p1_tech or p1_tech['type'] != 'submission'):
         cc = p1_move_id in (p2_tech.get('counters') or [])
-        dc = (0.75 if cc else 0.25 if p1_is_c else 0.20 if (p1_tech and p1_tech['type'] == 'escape') else 0.05) + p1_def_bonus - p2_cb
+        p2_mastery = get_mastery_mod(graph, p2_info['archetype'], 'submission').get('success_mod', 0)
+        dc = (0.75 if cc else 0.25 if p1_is_c else 0.20 if (p1_tech and p1_tech['type'] == 'escape') else 0.05) + p1_def_bonus - p2_cb - p2_mastery
         if p1_gp <= 2: dc -= 0.15
         dc = max(0.0, min(0.95, dc))
         if random.random() < dc:
@@ -554,7 +624,7 @@ def calc_elo(winner_elo, loser_elo, k=32):
 
 
 # ===== MATCH RUNNER =====
-def run_match(graph, p1, p2, p1_deck, p2_deck, match_num):
+def run_match(graph, p1, p2, p1_deck, p2_deck, p1_tiers, p2_tiers, match_num):
     print(f'\n{"="*60}')
     print(f'  Match {match_num}: {p1["name"]} ({p1["archetype"]}) vs {p2["name"]} ({p2["archetype"]})')
     print(f'{"="*60}')
@@ -600,9 +670,13 @@ def run_match(graph, p1, p2, p1_deck, p2_deck, match_num):
         p1_stance = ai_pick_stance(p1_status, p1_gp)
         p2_stance = ai_pick_stance(p2_status, p2_gp)
 
-        # Pick moves (GP-aware)
-        p1_move_id, p1_is_counter = ai_pick_move(graph, p1_pos, p1['belt'], p1_deck, p1['archetype'], p2_stance, counters, p2_pos, p2['archetype'], p1_gp)
-        p2_move_id, p2_is_counter = ai_pick_move(graph, p2_pos, p2['belt'], p2_deck, p2['archetype'], p1_stance, counters, p1_pos, p1['archetype'], p2_gp)
+        # Draw hands
+        p1_hand = draw_hand(graph, p1_pos, p1['belt'], p1_deck, p1_tiers, p1['archetype'], p1_status)
+        p2_hand = draw_hand(graph, p2_pos, p2['belt'], p2_deck, p2_tiers, p2['archetype'], p2_status)
+
+        # Pick moves from hand (GP-aware, tier-aware)
+        p1_move_id, p1_is_counter = ai_pick_move(graph, p1_pos, p1['belt'], p1_deck, p1_tiers, p1['archetype'], p2_stance, counters, p2_pos, p2['archetype'], p1_gp, p1_hand)
+        p2_move_id, p2_is_counter = ai_pick_move(graph, p2_pos, p2['belt'], p2_deck, p2_tiers, p2['archetype'], p1_stance, counters, p1_pos, p1['archetype'], p2_gp, p2_hand)
 
         # Store stances in match for resolver
         match['player1_stance'] = p1_stance
@@ -772,18 +846,21 @@ def main():
     graph = load_graph()
     print(f'  {len(graph["positions"])} positions, {len(graph["techniques"])} techniques, {len(graph["counters"])} counters')
 
-    print(f'\nLoading decks...')
+    print(f'\nLoading decks with tiers...')
     decks = {}
+    deck_tiers = {}
     for ai in AI_PLAYERS:
-        stacks = db_get('player_move_stacks', f'profile_id=eq.{ai["id"]}&select=technique_id')
+        stacks = db_get('player_move_stacks', f'profile_id=eq.{ai["id"]}&select=technique_id,tier')
         decks[ai['id']] = [s['technique_id'] for s in stacks]
-        print(f'  {ai["name"]}: {len(decks[ai["id"]])} techniques')
+        deck_tiers[ai['id']] = {s['technique_id']: s.get('tier', 'trained') for s in stacks}
+        drilled = [s['technique_id'] for s in stacks if s.get('tier') == 'drilled']
+        print(f'  {ai["name"]}: {len(decks[ai["id"]])} techniques ({len(drilled)} drilled)')
 
     print(f'\nRunning {NUM_MATCHES} matches...')
     results = []
     for i in range(NUM_MATCHES):
         p1, p2 = random.sample(AI_PLAYERS, 2)
-        r = run_match(graph, p1, p2, decks[p1['id']], decks[p2['id']], i + 1)
+        r = run_match(graph, p1, p2, decks[p1['id']], decks[p2['id']], deck_tiers.get(p1['id'], {}), deck_tiers.get(p2['id'], {}), i + 1)
         if r: results.append(r)
         time.sleep(0.2)
 
