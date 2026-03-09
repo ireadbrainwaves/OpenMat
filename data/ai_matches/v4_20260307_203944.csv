@@ -1,0 +1,6 @@
+match_id,bot1,bot2,b1_name,b2_name,b1_pts,b2_pts,winner,method,turns
+364b727f-2fac-4b45-9c76-4b9883207b85,wrestler,leg_locker,Iron Mike,Haisam,0,0,draw,Draw,25
+f74fc16d-4e89-4047-8a52-5087228b55a7,leg_locker,scrambler,Haisam,Ruotolo,0,0,draw,Draw,25
+9962ed2c-1c01-4247-8ab5-15b6b4ea258e,leg_locker,submission_hunter,Haisam,Marcelo,0,0,leg_locker,Submission - Outside Heel Hook,3
+9a623ffd-dc09-46d3-95d6-5be75b65a7f3,guard_puller,scrambler,Miyao,Ruotolo,0,2,scrambler,Points - 2 to 0,20
+b77b4ba8-d05b-4a17-a266-11bbc7cbb641,wrestler,guard_puller,Iron Mike,Miyao,0,0,draw,Draw,25

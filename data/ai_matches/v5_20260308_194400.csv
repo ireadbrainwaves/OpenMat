@@ -1,0 +1,101 @@
+match_id,bot1,bot2,b1_name,b2_name,b1_pts,b2_pts,winner,method,turns
+12131735-9da4-4f78-8ace-4f0b15e83662,guard_puller,scrambler,Miyao,Ruotolo,0,0,draw,draw,2
+df8ade84-bc14-4177-985f-4059409819f5,wrestler,submission_hunter,Iron Mike,Marcelo,4,0,wrestler,Submission - Americana (from Side Control),3
+ef283579-8ca5-4a1c-b156-d519be7ae05f,wrestler,scrambler,Iron Mike,Ruotolo,0,4,draw,draw,3
+128f4423-3de8-41fe-98bb-d37502a03714,pressure_passer,scrambler,Rodolfo,Ruotolo,0,0,draw,draw,2
+30fe710f-c2aa-437a-ad85-cdc3465a342c,submission_hunter,scrambler,Marcelo,Ruotolo,0,2,draw,draw,3
+e0027d1b-ce6a-4f94-ac11-fdffefafd5c6,wrestler,guard_puller,Iron Mike,Miyao,0,0,draw,draw,2
+ce62202f-54cd-4800-8a73-39fc6d5d0ed5,guard_puller,leg_locker,Miyao,Haisam,0,0,draw,draw,2
+3c2f371c-4f13-403d-bcc8-86385f1283be,leg_locker,submission_hunter,Haisam,Marcelo,0,0,draw,draw,2
+21170bfb-a9e2-40c1-8b06-f8352a9bf927,wrestler,leg_locker,Iron Mike,Haisam,4,0,draw,draw,4
+e055a951-05a0-4527-b976-52f7d60dc4c3,pressure_passer,submission_hunter,Rodolfo,Marcelo,0,0,draw,draw,2
+4beee6b8-0799-449f-b69d-a3d6fd5abade,guard_puller,pressure_passer,Miyao,Rodolfo,0,0,draw,draw,2
+9facacec-1954-45a0-a886-af5ac1966ea3,leg_locker,scrambler,Haisam,Ruotolo,0,0,draw,draw,2
+b39a070a-1276-4377-9e9e-ab0e3b53a615,wrestler,pressure_passer,Iron Mike,Rodolfo,2,0,draw,draw,3
+8ab68113-969d-48bf-871b-316288cf9db0,guard_puller,submission_hunter,Miyao,Marcelo,0,0,draw,draw,2
+4e4f80f1-46d5-488d-b2b4-417edb2dfb54,leg_locker,pressure_passer,Haisam,Rodolfo,0,0,draw,draw,2
+2b5bee06-0a09-413b-8263-a7b4ad119ebd,wrestler,guard_puller,Iron Mike,Miyao,2,0,wrestler,Submission - Kimura (from Side Control),3
+d469dd15-5c3f-4000-be68-80f4299fe5e3,pressure_passer,scrambler,Rodolfo,Ruotolo,0,2,draw,draw,3
+c80e007e-45ab-4894-82c7-c74904710f11,wrestler,pressure_passer,Iron Mike,Rodolfo,4,0,wrestler,Submission - Americana (from Side Control),4
+1b7b3d01-9598-45a2-a1f2-06066dea22f7,leg_locker,scrambler,Haisam,Ruotolo,0,4,draw,draw,3
+41e7a974-5495-4a98-9f47-aebeaa0f74e3,wrestler,submission_hunter,Iron Mike,Marcelo,0,0,wrestler,Submission - Standing Guillotine,4
+4a77da47-2db5-42b2-8f8e-6a140b08a6d7,leg_locker,pressure_passer,Haisam,Rodolfo,0,0,draw,draw,2
+f645d436-dfb9-4d2d-98c0-6d5a512704e0,guard_puller,scrambler,Miyao,Ruotolo,0,2,draw,draw,3
+d03c7c55-4887-4f7c-9888-747319bb904f,wrestler,leg_locker,Iron Mike,Haisam,0,0,draw,draw,2
+b2b9314c-f0de-4802-810f-2ef444d24c50,guard_puller,leg_locker,Miyao,Haisam,0,0,draw,draw,2
+612dadfb-2a79-493f-a183-89062d09dabd,guard_puller,submission_hunter,Miyao,Marcelo,0,0,draw,draw,2
+e1c8aaa1-f5d2-4099-b4f6-068b3f7142b9,pressure_passer,submission_hunter,Rodolfo,Marcelo,0,0,draw,draw,2
+c2b58761-d16b-4b32-b657-865a43dd6154,submission_hunter,scrambler,Marcelo,Ruotolo,0,0,draw,draw,2
+42f51406-0eec-432f-99e4-b3dd01a0f48b,guard_puller,pressure_passer,Miyao,Rodolfo,0,0,draw,draw,2
+4cd2f8fe-2c17-49b0-8c78-6796a05ef54c,wrestler,scrambler,Iron Mike,Ruotolo,2,0,draw,draw,3
+e23eee51-fcd0-447d-abb0-d5e6d77ad904,leg_locker,submission_hunter,Haisam,Marcelo,0,0,draw,draw,2
+6457cddd-1a58-4982-a304-0810ef4c5602,wrestler,submission_hunter,Iron Mike,Marcelo,2,0,wrestler,Submission - Kimura (from Side Control),4
+73b0bdf8-8167-4bd7-97ca-d8e301a8e4ea,guard_puller,submission_hunter,Miyao,Marcelo,0,0,draw,draw,2
+f5032cef-cf9c-43ab-ba5a-69f6ba3ae840,leg_locker,submission_hunter,Haisam,Marcelo,0,0,draw,draw,2
+722baf6d-c601-4702-a9a6-8009fbb6c31c,guard_puller,scrambler,Miyao,Ruotolo,0,0,draw,draw,2
+bfd7df7a-8f4e-44e7-9814-1936d02c5e31,wrestler,guard_puller,Iron Mike,Miyao,0,0,draw,draw,2
+55fdfad9-fd2f-4276-89fb-a8d2780eab5e,pressure_passer,submission_hunter,Rodolfo,Marcelo,0,0,draw,draw,2
+ac8cca58-6767-4bae-8c0d-037bc33fa4ef,leg_locker,pressure_passer,Haisam,Rodolfo,0,0,draw,draw,2
+998905f5-d067-4831-87f4-17608c2055d8,wrestler,scrambler,Iron Mike,Ruotolo,4,0,draw,draw,3
+68838ed4-b780-499e-a73d-e1ce9427ab9d,wrestler,leg_locker,Iron Mike,Haisam,0,0,draw,draw,2
+1c1fbba7-5e12-4fe2-b60b-1848a029d0d1,guard_puller,leg_locker,Miyao,Haisam,0,0,draw,draw,2
+4dcc3d82-6b35-4426-9f04-72c0a4f5d104,guard_puller,pressure_passer,Miyao,Rodolfo,0,0,draw,draw,2
+984ef8d7-d0f0-437e-b0dd-3ba507e9ad01,pressure_passer,scrambler,Rodolfo,Ruotolo,0,0,draw,draw,2
+9496773a-2df9-4f4a-bcf9-13b06a9b374e,leg_locker,scrambler,Haisam,Ruotolo,0,0,draw,draw,2
+a63f3548-1b31-4edf-8567-764f492d4e1e,submission_hunter,scrambler,Marcelo,Ruotolo,0,0,submission_hunter,Submission - Standing Guillotine,3
+e9fd49f4-e33e-4558-b387-497b8a6ad1e4,wrestler,pressure_passer,Iron Mike,Rodolfo,2,0,wrestler,Submission - Arm Triangle (from Side Control),3
+6bab2364-bd29-4420-b90e-67b830d80684,guard_puller,scrambler,Miyao,Ruotolo,0,0,draw,draw,2
+c8f412ba-7c34-43fa-8b9e-3505ab653165,leg_locker,pressure_passer,Haisam,Rodolfo,0,0,draw,draw,2
+07dc56a9-16b3-447a-9470-1937aa0bb894,wrestler,submission_hunter,Iron Mike,Marcelo,0,0,wrestler,Submission - Standing Guillotine,3
+75b10bbd-ba1e-46f7-b8d1-125c6f025414,pressure_passer,submission_hunter,Rodolfo,Marcelo,0,0,draw,draw,2
+2ce530cb-5374-4e8d-b9fb-1464aa2a149f,wrestler,guard_puller,Iron Mike,Miyao,2,0,wrestler,Submission - Arm Triangle (from Side Control),3
+a08e8492-c895-4d65-bd3e-a5933f140e77,wrestler,leg_locker,Iron Mike,Haisam,0,0,draw,draw,2
+1b29e4b7-9059-46a2-a913-87c60d56f713,wrestler,scrambler,Iron Mike,Ruotolo,4,0,draw,draw,4
+51ae5641-60e7-461c-bd03-83ad0b7e7ddf,leg_locker,scrambler,Haisam,Ruotolo,0,0,draw,draw,2
+df551559-348f-4adb-8d36-d90ea6b21ec9,wrestler,pressure_passer,Iron Mike,Rodolfo,4,0,wrestler,Submission - Arm Triangle (from Side Control),3
+a377116d-36ff-4581-bae3-3c4ff5b47163,guard_puller,pressure_passer,Miyao,Rodolfo,0,0,draw,draw,2
+859f5b0f-2c17-48c3-aee0-73f4841761b3,guard_puller,leg_locker,Miyao,Haisam,0,0,draw,draw,2
+6cdf14de-f89d-4e97-a6c9-a60fbeb277ef,submission_hunter,scrambler,Marcelo,Ruotolo,0,2,draw,draw,3
+ba68ed18-df0e-44e5-b173-112b8fff79c5,pressure_passer,scrambler,Rodolfo,Ruotolo,0,0,draw,draw,2
+8c8db358-19ad-4a16-80cb-aede535e6fff,guard_puller,submission_hunter,Miyao,Marcelo,0,0,draw,draw,3
+26cd022c-e936-4548-989f-f357317c1bb7,leg_locker,submission_hunter,Haisam,Marcelo,0,0,draw,draw,2
+45d4db2a-ae68-46b4-b390-51f6cbb569b5,wrestler,scrambler,Iron Mike,Ruotolo,2,0,draw,draw,2
+35aefc31-4700-4027-95fa-a7b507929a0e,guard_puller,pressure_passer,Miyao,Rodolfo,0,0,draw,draw,2
+8db1806a-0217-43c0-8b4f-f246ccce4204,wrestler,pressure_passer,Iron Mike,Rodolfo,0,0,draw,draw,2
+6250ee2b-ed6f-4a27-bf31-ce03723ecd51,leg_locker,submission_hunter,Haisam,Marcelo,0,0,draw,draw,2
+2f4bfbe1-b3fd-4eca-8d9e-afdaeb24ce8a,leg_locker,pressure_passer,Haisam,Rodolfo,0,0,draw,draw,2
+c7446b47-8e4f-4f91-82f4-227e69c06e9f,wrestler,guard_puller,Iron Mike,Miyao,0,0,draw,draw,2
+0c3502e5-3dc8-4bec-adbe-3a17e38b4ae6,guard_puller,scrambler,Miyao,Ruotolo,0,0,draw,draw,2
+0bed34c7-85b8-4f93-b7a0-2dea916ad0c7,submission_hunter,scrambler,Marcelo,Ruotolo,0,0,submission_hunter,Submission - Americana (from Side Control),4
+5976c66b-6a06-4a1d-b01d-5d24e73b3b03,wrestler,leg_locker,Iron Mike,Haisam,2,0,draw,draw,2
+1096454e-eb6f-40e6-b10d-309e75e5db32,pressure_passer,scrambler,Rodolfo,Ruotolo,0,0,draw,draw,2
+7913875b-b876-40be-815d-b39dead9c5cf,guard_puller,submission_hunter,Miyao,Marcelo,0,0,draw,draw,2
+b1bea335-db0c-4600-9788-fad0047d2465,guard_puller,leg_locker,Miyao,Haisam,0,0,draw,draw,2
+c9e721e8-06f1-4932-a94b-6467cb45203a,leg_locker,scrambler,Haisam,Ruotolo,0,0,draw,draw,2
+81b4a152-f941-415b-a531-a77994df5ed7,pressure_passer,submission_hunter,Rodolfo,Marcelo,0,0,draw,draw,2
+369ca56a-9b84-4047-ac04-295063d0664f,wrestler,submission_hunter,Iron Mike,Marcelo,0,0,submission_hunter,Submission - Kimura (from Closed Guard),3
+40aa1754-7b9c-42d7-be11-740fab3bb29f,wrestler,scrambler,Iron Mike,Ruotolo,0,4,draw,draw,3
+a5843325-4b89-4caf-9dfd-6f26c466aa26,leg_locker,scrambler,Haisam,Ruotolo,0,4,draw,draw,3
+338f23ac-4e46-47a2-85a7-b51a340621a5,guard_puller,leg_locker,Miyao,Haisam,0,0,draw,draw,2
+c3e559d8-f501-4df8-9b3a-f6242f6b47c3,guard_puller,scrambler,Miyao,Ruotolo,0,4,draw,draw,3
+7a3a37e9-94d2-4a65-8912-4228b8410ce8,leg_locker,submission_hunter,Haisam,Marcelo,0,0,draw,draw,2
+105c3b6e-f048-4bcc-ab05-5ea41a152c7e,pressure_passer,submission_hunter,Rodolfo,Marcelo,0,0,draw,draw,2
+c8fa89da-c198-4b9b-9a3e-f450969fc36f,wrestler,guard_puller,Iron Mike,Miyao,0,0,draw,draw,2
+9b0a0e13-690b-44ea-bbc1-3e24609c2c3c,guard_puller,pressure_passer,Miyao,Rodolfo,0,0,draw,draw,2
+672091aa-c6cd-4d22-bff5-d6c2d2991438,wrestler,pressure_passer,Iron Mike,Rodolfo,2,0,draw,draw,4
+daa7b3ad-893d-4596-b036-803a6690bcce,submission_hunter,scrambler,Marcelo,Ruotolo,0,0,draw,draw,3
+10636d01-9a76-4ab8-8ef9-4650e629ffac,guard_puller,submission_hunter,Miyao,Marcelo,0,0,draw,draw,2
+521177f4-6718-487f-8a80-6e764ca9113f,wrestler,leg_locker,Iron Mike,Haisam,0,0,draw,draw,2
+1e677092-dc81-46f7-b3c8-b0700fc7203f,leg_locker,pressure_passer,Haisam,Rodolfo,0,0,draw,draw,2
+e435ef5f-a4d3-4e16-b423-558edb2d8181,wrestler,submission_hunter,Iron Mike,Marcelo,2,0,wrestler,Submission - Americana (from Side Control),4
+dd106f52-014c-48bf-9498-5fb3d56058e2,pressure_passer,scrambler,Rodolfo,Ruotolo,0,4,draw,draw,3
+54afaebe-20d0-4e99-bffa-fd87074cb60b,wrestler,pressure_passer,Iron Mike,Rodolfo,2,0,draw,draw,3
+3137372a-1f39-4c12-b2e3-0864bcf457cc,leg_locker,submission_hunter,Haisam,Marcelo,0,0,draw,draw,2
+7d9e02f6-7603-43ab-94c1-3b01df86d524,guard_puller,submission_hunter,Miyao,Marcelo,0,0,draw,draw,2
+b6e2e5e4-39fb-40df-aba8-4d5d26e7b0b5,submission_hunter,scrambler,Marcelo,Ruotolo,0,2,draw,draw,3
+557ad5ef-d0cb-4cda-b530-098442d6ff74,wrestler,leg_locker,Iron Mike,Haisam,0,0,draw,draw,2
+ac250e14-7832-4c35-b6d3-0cf143e4c969,guard_puller,leg_locker,Miyao,Haisam,0,0,draw,draw,2
+d463765c-eb13-4bde-9105-2c15a0ded582,wrestler,guard_puller,Iron Mike,Miyao,0,0,draw,draw,2
+6f822374-8f7e-474f-8996-4852a57f3e47,leg_locker,pressure_passer,Haisam,Rodolfo,0,0,draw,draw,2
+23ce0746-b39c-4fd9-b899-caafa69af60e,leg_locker,scrambler,Haisam,Ruotolo,0,2,draw,draw,3
+43bc2bc6-f0d8-4f53-a9a4-df5431330027,pressure_passer,submission_hunter,Rodolfo,Marcelo,0,0,draw,draw,2

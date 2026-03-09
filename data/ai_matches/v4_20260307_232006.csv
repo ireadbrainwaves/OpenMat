@@ -1,0 +1,51 @@
+match_id,bot1,bot2,b1_name,b2_name,b1_pts,b2_pts,winner,method,turns
+dd426b3c-35bc-4f6f-90e7-7b8b2dce3068,wrestler,scrambler,Iron Mike,Ruotolo,6,4,wrestler,Points - 6 to 4,20
+dd208a48-ba2b-4479-a9dc-318b473da204,leg_locker,pressure_passer,Haisam,Rodolfo,0,0,leg_locker,Submission - Triangle Choke (from Closed Guard),7
+71c53241-6bfe-4d1b-93a5-079e14eaa083,guard_puller,leg_locker,Miyao,Haisam,0,0,leg_locker,Submission - Outside Heel Hook,4
+8b00de98-c662-4367-bb2b-58fc290601e3,wrestler,submission_hunter,Iron Mike,Marcelo,0,2,submission_hunter,Submission - Americana (from Mount),6
+1bee1f73-ced1-4764-80a8-116f2d585bc2,wrestler,leg_locker,Iron Mike,Haisam,2,0,leg_locker,Submission - Triangle Choke (from Closed Guard),15
+f448c71d-0d61-4d80-8394-1ee4ae7d2d43,submission_hunter,scrambler,Marcelo,Ruotolo,6,4,scrambler,Submission - Rear Naked Choke,26
+fd2fc175-2756-4d7d-a9f4-3357e9cb5c83,leg_locker,scrambler,Haisam,Ruotolo,2,4,scrambler,Points - 4 to 2,20
+b820b668-3fd7-4907-9839-1ba9e654f153,guard_puller,scrambler,Miyao,Ruotolo,2,4,scrambler,Submission - Rear Naked Choke,16
+a7f94b62-53d2-4a1f-b5de-2450216dc014,guard_puller,submission_hunter,Miyao,Marcelo,0,0,guard_puller,Submission - Omoplata (from Closed Guard),3
+6cea47d0-08e9-4bd8-98b4-965c97101fb8,leg_locker,submission_hunter,Haisam,Marcelo,0,4,submission_hunter,Submission - Arm Triangle (from Side Control),5
+bf999621-f1b9-441e-9628-a02428ae063f,wrestler,guard_puller,Iron Mike,Miyao,4,6,guard_puller,Points - 6 to 4,20
+fd0736c7-2895-4bbc-b936-935aac1aaa27,guard_puller,pressure_passer,Miyao,Rodolfo,2,0,guard_puller,Points - 2 to 0,20
+8780216a-c473-41c6-ac8a-8b1476e03bb0,pressure_passer,submission_hunter,Rodolfo,Marcelo,4,0,pressure_passer,Submission - Toe Hold,9
+a8564e3e-bdc9-41a4-a71d-836791568fa9,wrestler,pressure_passer,Iron Mike,Rodolfo,4,0,wrestler,Submission - Kimura (from Side Control),3
+9821832b-01f8-4153-9455-971f6495911b,pressure_passer,scrambler,Rodolfo,Ruotolo,2,4,scrambler,Submission - Rear Naked Choke,17
+4f95da81-ca2c-4327-98f4-bfb2d45b5269,guard_puller,leg_locker,Miyao,Haisam,0,0,guard_puller,Submission - Kneebar (from Saddle),16
+5aa6b991-3f78-42b2-a8ac-ee50f313e8ce,wrestler,leg_locker,Iron Mike,Haisam,0,0,leg_locker,Submission - Outside Heel Hook,5
+97e60615-581c-4a73-aaf8-72228b5600fb,wrestler,guard_puller,Iron Mike,Miyao,0,0,wrestler,Submission - Omoplata (from Rubber Guard),12
+cd7685fd-9e82-4903-8cb0-755a0d41b7ae,wrestler,submission_hunter,Iron Mike,Marcelo,2,0,wrestler,Submission - Americana (from Mount),6
+d9dcce2f-042f-4c6d-949f-be438d453078,pressure_passer,submission_hunter,Rodolfo,Marcelo,8,2,pressure_passer,Points - 8 to 2,24
+7fb1b2c3-fb8b-47bb-921b-2eae5a48c0e0,guard_puller,submission_hunter,Miyao,Marcelo,0,4,submission_hunter,Submission - Arm Triangle (from Side Control),3
+f7f7850f-d079-4255-96eb-1ae19b9d6ae4,leg_locker,submission_hunter,Haisam,Marcelo,0,4,submission_hunter,Submission - Kimura (from Side Control),3
+ff8125a9-682c-4347-bbea-071b3e1d78d2,leg_locker,scrambler,Haisam,Ruotolo,0,0,leg_locker,Submission - Outside Heel Hook,3
+23d1ac1a-4cc8-457e-bc8d-6423b4304a6f,guard_puller,pressure_passer,Miyao,Rodolfo,0,4,pressure_passer,Submission - Americana (from Side Control),3
+dc61bb4e-1b8a-4f00-bc79-cb875145ee76,guard_puller,scrambler,Miyao,Ruotolo,0,0,scrambler,Submission - Rear Naked Choke,3
+f2004e04-3c3c-4238-9ee0-25efa2641a0c,wrestler,scrambler,Iron Mike,Ruotolo,0,0,scrambler,Submission - Rear Naked Choke,7
+63edbef1-32d2-414d-8128-2bb301281c41,submission_hunter,scrambler,Marcelo,Ruotolo,6,0,submission_hunter,Points - 6 to 0,20
+4e58da46-188f-4799-972f-c7640097e95e,wrestler,pressure_passer,Iron Mike,Rodolfo,0,0,pressure_passer,Submission chain - Americana (from Side Control),5
+dc02195a-8771-405e-a032-b05c7b5f2a4a,pressure_passer,scrambler,Rodolfo,Ruotolo,2,8,scrambler,Submission - Rear Naked Choke,16
+4f207623-3b25-41d7-8110-3228365ad032,leg_locker,pressure_passer,Haisam,Rodolfo,0,0,leg_locker,Submission - Armbar (from Closed Guard),5
+e66409d8-396a-4003-9115-55f518d5f12e,wrestler,submission_hunter,Iron Mike,Marcelo,0,4,submission_hunter,Submission - Kimura (from Side Control),3
+cec03049-d37c-4aef-9ddf-fd17f0055f88,wrestler,leg_locker,Iron Mike,Haisam,2,0,leg_locker,Submission - Outside Heel Hook,12
+12d35cca-9c6e-492c-9ce3-7975f1ec93bf,guard_puller,leg_locker,Miyao,Haisam,4,2,leg_locker,Submission - Cross Collar Choke (from Mount),20
+ace9006b-6d38-45c6-90db-a95fb3ee171e,leg_locker,pressure_passer,Haisam,Rodolfo,0,0,leg_locker,Submission - Outside Heel Hook,6
+dd69fa87-a601-48d8-b8c9-80314d6e49e6,leg_locker,scrambler,Haisam,Ruotolo,0,0,leg_locker,Submission - Outside Heel Hook,7
+5c2f9789-f26d-4e32-84b1-b190a1fe4a20,guard_puller,scrambler,Miyao,Ruotolo,2,0,guard_puller,Submission - Armbar (from Mount),14
+ef96c0df-76b8-452d-a6c3-b2e160bdcbf5,leg_locker,submission_hunter,Haisam,Marcelo,2,4,submission_hunter,Points - 4 to 2,20
+1a737436-2f30-42f0-85d5-9f858b3b2220,guard_puller,pressure_passer,Miyao,Rodolfo,0,4,guard_puller,Submission - Armbar (from Closed Guard),16
+3d841ac2-f5b7-4590-9321-261702c760e6,wrestler,pressure_passer,Iron Mike,Rodolfo,0,0,pressure_passer,Submission - Triangle (from Spider),6
+09861d1f-fe5d-460a-a93b-8fd708263f37,wrestler,guard_puller,Iron Mike,Miyao,2,0,wrestler,Submission - Kimura (from Side Control),3
+224b7526-db05-45e8-bfe7-8ab55118e0c1,wrestler,scrambler,Iron Mike,Ruotolo,4,4,scrambler,Submission - Rear Naked Choke,16
+be004371-7ad7-4eb5-a327-e6780ca3e36d,submission_hunter,scrambler,Marcelo,Ruotolo,0,0,submission_hunter,Submission - Cross Collar Choke (from Closed Guard),7
+d355113c-8845-4538-9019-fa7e1886ad64,pressure_passer,scrambler,Rodolfo,Ruotolo,3,4,scrambler,Submission - Rear Naked Choke,16
+5754afee-d98f-4ab7-93ca-9ea22ebdcb09,pressure_passer,submission_hunter,Rodolfo,Marcelo,0,0,submission_hunter,Submission - Kimura (from Closed Guard),6
+7c3c41b0-64fc-4cf5-91d7-11d3816cdcca,guard_puller,submission_hunter,Miyao,Marcelo,0,0,submission_hunter,Submission - Kimura (from Closed Guard),7
+004778a0-1982-4733-8c89-a85aac000e62,wrestler,guard_puller,Iron Mike,Miyao,2,0,wrestler,Submission - D'Arce Choke (from Front Headlock),9
+c80bf955-1d8a-43c1-a745-e3153593961f,guard_puller,leg_locker,Miyao,Haisam,0,0,leg_locker,Submission - Outside Heel Hook,6
+6a8c8a3c-faf7-4026-b8f5-fcf910d7c405,pressure_passer,scrambler,Rodolfo,Ruotolo,2,0,scrambler,Submission - Standing Guillotine,15
+77da3d1d-4184-481f-9567-b8bdd34ecb2d,wrestler,pressure_passer,Iron Mike,Rodolfo,2,2,pressure_passer,Submission - Americana (from Mount),22
+26fe6351-198f-49b7-b934-b6faf921f78e,guard_puller,submission_hunter,Miyao,Marcelo,0,0,submission_hunter,Submission chain - Kimura (from Half Guard Bottom),13
