@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python engine/ai_bot_engine.py --matches 10)"
+    ]
+  }
+}
