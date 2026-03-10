@@ -1,0 +1,108 @@
+/* ═══════════════════════════════════════════════════════════
+   OPEN MAT — GLOBAL STYLES
+   Design tokens, fonts, animations
+   ═══════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
+
+/* Reset */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* CSS Variables (for non-JS contexts) */
+:root {
+  --bg: #0A0A0F;
+  --surface: #0F1015;
+  --surface2: #14151C;
+  --surface3: #1A1B24;
+  --border: #1E2029;
+  --borderB: #2A2C38;
+  --text: #E8E8F0;
+  --muted: #6B6E80;
+  --dim: #3A3D4E;
+  --white: #F0F0FF;
+  --you: #D4603A;
+  --opp: #3A8EC4;
+  --red: #E63946;
+  --blue: #4895EF;
+  --amber: #F4A261;
+  --green: #52B788;
+  --teal: #2A9D8F;
+  --gold: #E9C46A;
+  --display: 'Bebas Neue', sans-serif;
+  --body: 'DM Sans', sans-serif;
+  --mono: 'IBM Plex Mono', monospace;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* Input defaults */
+input::placeholder { color: var(--dim); }
+input:focus { border-color: rgba(212, 96, 58, 0.25) !important; outline: none; }
+
+/* Button active state */
+button:active { transform: scale(0.97) !important; }
+button { -webkit-tap-highlight-color: transparent; }
+
+/* ── ANIMATIONS ─────────────────────────────────────────── */
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes flipIn {
+  from { opacity: 0; transform: perspective(800px) rotateY(90deg) scale(0.8); }
+  to { opacity: 1; transform: perspective(800px) rotateY(0deg) scale(1); }
+}
+
+@keyframes pulseRing {
+  0% { transform: scale(1); opacity: 0.5; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+@keyframes gpPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes subPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes shakeX {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+
+@keyframes screenFlash {
+  0% { opacity: 0.15; }
+  100% { opacity: 0; }
+}
+
+@keyframes coachPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(82, 183, 136, 0.3); }
+  50% { box-shadow: 0 0 0 8px rgba(82, 183, 136, 0); }
+}
+
+@keyframes tightenPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
