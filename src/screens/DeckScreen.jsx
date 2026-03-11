@@ -8,21 +8,21 @@ import { T, MTColors, TierDisplay } from '../lib/tokens';
 import { MoveIcon } from '../lib/icons';
 import { sb } from '../lib/supabase';
 
-export default function DeckScreen({ user, profile }) {
+export default function DeckScreen({ profile }) {
   const [tab, setTab] = useState("deck");
   const [filter, setFilter] = useState("all");
   const [moves, setMoves] = useState([]);
   const [library, setLibrary] = useState([]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!profile) return;
     // Load player's deck
-    sb.from("player_move_stacks").select("*, techniques(*)").eq("profile_id", user.id)
+    sb.from("player_move_stacks").select("*, techniques(*)").eq("profile_id", profile.id)
       .then(({ data }) => data && setMoves(data));
     // Load full technique library
     sb.from("techniques").select("*").order("belt_unlock").order("type").order("name")
       .then(({ data }) => data && setLibrary(data));
-  }, [user]);
+  }, [profile]);
 
   const types = ["all", "submission", "sweep", "transition", "escape", "takedown"];
   const deckMoves = moves.map(m => ({

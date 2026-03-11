@@ -238,9 +238,10 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
     if (!error && isBotMatch) {
       const m = matchRef.current;
       const botDrills = m?.player1_id === botId ? (m?.player1_drilled_moves || []) : (m?.player2_drilled_moves || []);
+      const botPos = m?.player1_id === botId ? m?.player1_position : m?.player2_position;
       const { data: botHand } = await sb.rpc('draw_hand', {
         p_profile_id: botId,
-        p_position: m?.current_position,
+        p_position: botPos || m?.current_position,
         p_archetype: botArchetype,
         p_drilled_moves: botDrills,
       });
@@ -257,9 +258,10 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
     if (isBotMatch) {
       const m = matchRef.current;
       const botDrills = m?.player1_id === botId ? (m?.player1_drilled_moves || []) : (m?.player2_drilled_moves || []);
+      const botPos = m?.player1_id === botId ? m?.player1_position : m?.player2_position;
       const { data: botHand } = await sb.rpc('draw_hand', {
         p_profile_id: botId,
-        p_position: m?.current_position,
+        p_position: botPos || m?.current_position,
         p_archetype: botArchetype,
         p_drilled_moves: botDrills,
       });

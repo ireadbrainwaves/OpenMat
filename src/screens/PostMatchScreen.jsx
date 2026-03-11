@@ -8,11 +8,11 @@ import { T, BeltColors } from '../lib/tokens';
 import { MoveIcon } from '../lib/icons';
 import { Bar, Btn } from '../components/UI';
 
-export default function PostMatchScreen({ user, match, onRematch, onLobby }) {
+export default function PostMatchScreen({ profile, match, onRematch, onHome }) {
   if (!match) return null;
 
-  const isP1 = match.player1_id === user?.id;
-  const won = match.winner_id === user?.id;
+  const isP1 = match.player1_id === profile?.id;
+  const won = match.winner_id === profile?.id;
   const method = match.win_method || "points";
   const myPoints = isP1 ? match.player1_points : match.player2_points;
   const oppPoints = isP1 ? match.player2_points : match.player1_points;
@@ -79,7 +79,7 @@ export default function PostMatchScreen({ user, match, onRematch, onLobby }) {
       {/* Actions */}
       <div style={{ display: "flex", gap: 8 }}>
         <Btn full variant="primary" onClick={onRematch}>Rematch</Btn>
-        <Btn full variant="secondary" onClick={onLobby}>Lobby</Btn>
+        <Btn full variant="secondary" onClick={onHome}>Home</Btn>
       </div>
     </div>
   );

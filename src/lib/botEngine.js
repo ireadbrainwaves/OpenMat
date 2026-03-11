@@ -99,8 +99,8 @@ function scoreMoveForArchetype(technique, archetype, currentPosition, botGP) {
 }
 
 export const BotEngine = {
-  // Delay to simulate "thinking"
-  THINK_DELAY_MS: 800 + Math.random() * 1200,
+  // Delay to simulate "thinking" — computed fresh each call
+  get THINK_DELAY_MS() { return 800 + Math.random() * 1200; },
 
   async respondToStance(match, botId, botArchetype) {
     await new Promise(r => setTimeout(r, this.THINK_DELAY_MS));
@@ -199,19 +199,16 @@ export const BotEngine = {
   async respondToSubMinigame(match, botId, isAttacker) {
     await new Promise(r => setTimeout(r, 2000 + Math.random() * 1000));
 
-    // Bot sub choices
-    const attackChoices = ['squeeze', 'adjust', 'chain_sub'];
-    const defendChoices = ['escape', 'explode', 'survive', 'reversal'];
-
+    // Bot sub choices — IDs must match the RPC/UI option IDs
     let choice;
     if (isAttacker) {
       // Attackers mostly squeeze, sometimes adjust
       const r = Math.random();
-      choice = r < 0.55 ? 'squeeze' : r < 0.85 ? 'adjust' : 'chain_sub';
+      choice = r < 0.55 ? 'squeeze' : r < 0.85 ? 'adjust' : 'transition_sub';
     } else {
       // Defenders prefer escape, sometimes explode
       const r = Math.random();
-      choice = r < 0.4 ? 'escape' : r < 0.7 ? 'explode' : r < 0.9 ? 'survive' : 'reversal';
+      choice = r < 0.35 ? 'technical_escape' : r < 0.6 ? 'explode' : r < 0.8 ? 'survive' : r < 0.9 ? 'sweep_scramble' : 'reversal_sub';
     }
 
     try {

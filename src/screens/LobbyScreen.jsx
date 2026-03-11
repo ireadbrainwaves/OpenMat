@@ -18,20 +18,24 @@ const BOTS = [
   { name: "RuotoloBot", arch: "scrambler", elo: 1300, flavor: "Chaos incarnate.", uuid: "00000006-0000-0000-0000-000000000006" },
 ];
 
-export default function LobbyScreen({ user, onMatchStart }) {
+export default function LobbyScreen({ user, profile, onNavigate }) {
   const [loading, setLoading] = useState(null); // bot uuid being challenged
+  const [error, setError] = useState(null);
 
   const challengeBot = async (bot) => {
     setLoading(bot.uuid);
+    setError(null);
     try {
-      const { data, error } = await sb.rpc("challenge_bot", {
+      const { data, error: rpcError } = await sb.rpc("challenge_bot", {
         p_player_id: user.id,
         p_bot_id: bot.uuid,
       });
-      if (error) throw error;
-      onMatchStart && onMatchStart(data); // match UUID
+      if (rpcError) throw rpcError;
+      if (!data) throw new Error("No match ID returned");
+      onNavigate && onNavigate('game_plan', { matchId: data, isBot: true, botId: bot.uuid });
     } catch (e) {
       console.error("Challenge bot error:", e);
+      setError("Failed to start match — try again.");
     }
     setLoading(null);
   };
@@ -39,6 +43,8 @@ export default function LobbyScreen({ user, onMatchStart }) {
   return (
     <div style={{ padding: "20px", animation: "fadeUp 0.3s ease-out" }}>
       <div style={{ fontFamily: T.display, fontSize: 24, color: T.white, letterSpacing: "0.06em", marginBottom: 16 }}>Solo Training</div>
+
+      {error && <div style={{ padding: "10px 12px", background: `${T.red}10`, border: `1px solid ${T.red}30`, borderRadius: 4, marginBottom: 12, fontFamily: T.mono, fontSize: 10, color: T.red }}>{error}</div>}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 24 }}>
         {BOTS.map(b => {

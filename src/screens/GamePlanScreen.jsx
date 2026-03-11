@@ -9,23 +9,33 @@ import { ArchIcon, MoveIcon } from '../lib/icons';
 import { Btn } from '../components/UI';
 import { sb } from '../lib/supabase';
 
-export default function GamePlanScreen({ user, profile, match, onReady }) {
-  const [opponent, setOpponent] = useState(null);
+export default function GamePlanScreen({ profile, matchId, opponent: oppProp, onReady }) {
+  const [match, setMatch] = useState(null);
+  const [opponent, setOpponent] = useState(oppProp || null);
   const [moves, setMoves] = useState([]);
   const [drilled, setDrilled] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
 
   const maxDrills = { white: 3, blue: 4, purple: 5, brown: 5, black: 5 }[profile?.belt] || 3;
 
   useEffect(() => {
-    if (!match || !user) return;
-    // Load opponent profile
-    const oppId = match.player1_id === user.id ? match.player2_id : match.player1_id;
-    sb.from("profiles").select("*").eq("id", oppId).single().then(({ data }) => data && setOpponent(data));
+    if (!matchId || !profile) return;
+    // Load match data
+    sb.from("matches").select("*").eq("id", matchId).single().then(({ data }) => {
+      if (data) {
+        setMatch(data);
+        // Load opponent if not passed as prop
+        if (!oppProp) {
+          const oppId = data.player1_id === profile.id ? data.player2_id : data.player1_id;
+          sb.from("profiles").select("*").eq("id", oppId).single().then(({ data: o }) => o && setOpponent(o));
+        }
+      }
+    });
     // Load player's moves for drill selection
-    sb.from("player_move_stacks").select("*, techniques(*)").eq("profile_id", user.id)
+    sb.from("player_move_stacks").select("*, techniques(*)").eq("profile_id", profile.id)
       .then(({ data }) => data && setMoves(data.map(m => ({ ...m, ...(m.techniques || {}) }))));
-  }, [match, user]);
+  }, [matchId, profile]);
 
   const toggleDrill = (techId) => {
     if (drilled.includes(techId)) {
@@ -37,11 +47,14 @@ export default function GamePlanScreen({ user, profile, match, onReady }) {
 
   const handleReady = async () => {
     setSaving(true);
+    setError(null);
     try {
-      await sb.rpc("set_drilled_moves", { p_match_id: match.id, p_moves: drilled });
-      onReady && onReady();
+      const { error: rpcError } = await sb.rpc("set_drilled_moves", { p_match_id: matchId, p_moves: drilled });
+      if (rpcError) throw rpcError;
+      onReady && onReady(drilled);
     } catch (e) {
       console.error("Set drills error:", e);
+      setError("Failed to save drills — try again.");
     }
     setSaving(false);
   };
@@ -91,6 +104,8 @@ export default function GamePlanScreen({ user, profile, match, onReady }) {
           );
         })}
       </div>
+
+      {error && <div style={{ padding: "10px 12px", background: `${T.red}10`, border: `1px solid ${T.red}30`, borderRadius: 4, marginBottom: 12, fontFamily: T.mono, fontSize: 10, color: T.red }}>{error}</div>}
 
       <Btn full variant="primary" onClick={handleReady} disabled={saving}>
         {saving ? "Saving..." : "Ready — Start Match"}

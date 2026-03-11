@@ -1,7 +1,7 @@
 import React from 'react';
 const { useState, useEffect } = React;
 import { sb, dbg, loadGraph } from './lib/supabase';
-import { AppShell, Nav, BottomNav, Center, Spinner } from './components/UI';
+import { AppShell, BottomNav, Center, Spinner } from './components/UI';
 import PrototypeScreen from './screens/PrototypeScreen';
 import AuthScreen from './screens/AuthScreen';
 import OnboardScreen from './screens/OnboardScreen';
@@ -11,7 +11,6 @@ import GamePlanScreen from './screens/GamePlanScreen';
 import MatchScreen from './screens/MatchScreen';
 import PostMatchScreen from './screens/PostMatchScreen';
 import DeckScreen from './screens/DeckScreen';
-import GymScreen from './screens/GymScreen';
 import ProfileScreen from './screens/ProfileScreen';
 
 export default function App() {
@@ -127,7 +126,7 @@ export default function App() {
     const oppId = endedMatch.player1_id === profile.id ? endedMatch.player2_id : endedMatch.player1_id;
     dbg('Sending rematch to ' + oppId, 'ok');
     await sb.from('match_invites').insert({ from_profile_id: profile.id, to_profile_id: oppId, match_type: 'ranked' });
-    setScreen('main'); setTab('match');
+    setScreen('main'); setTab('lobby');
   }
 
   // Loading
@@ -147,55 +146,14 @@ export default function App() {
   // NEW: Post-Match Progression (replaces old ResultScreen)
   if (screen === 'result' && endedMatch) return <AppShell><PostMatchScreen profile={profile} match={endedMatch} onHome={() => { setScreen('main'); setTab('home'); }} onRematch={handleRematch} /></AppShell>;
 
-  // === TEST PREVIEWS (remove before shipping) ===
-  function testGamePlan() {
-    // Preview GamePlan with a mock opponent (Iron Mike bot)
-    setMatchId('test-preview');
-    setOpponent({
-      id: '00000001-0000-0000-0000-000000000001',
-      display_name: 'Iron Mike',
-      archetype: 'wrestler',
-      belt: 'blue',
-      elo: 1280,
-    });
-    setScreen('gameplan');
-  }
-
-  function testPostMatch() {
-    // Preview PostMatch with mock match data
-    setEndedMatch({
-      id: 'test-preview',
-      player1_id: profile.id,
-      player2_id: '00000001-0000-0000-0000-000000000001',
-      winner_id: profile.id,
-      win_method: 'Submission — Armbar from Closed Guard',
-      current_turn: 18,
-      max_turns: 30,
-      player1_points: 6,
-      player2_points: 2,
-      player1_elo_delta: 24,
-      player2_elo_delta: -24,
-      status: 'finished',
-    });
-    setScreen('result');
-  }
-
   // Main tabs
   return (
     <AppShell>
-      {tab === 'home' && <HomeScreen profile={profile} onMatch={() => setTab('match')} />}
-      {tab === 'match' && <LobbyScreen user={user} profile={profile} onNavigate={handleNavigate} />}
+      {tab === 'home' && <HomeScreen user={user} profile={profile} onNavigate={(t) => setTab(t)} />}
+      {tab === 'lobby' && <LobbyScreen user={user} profile={profile} onNavigate={handleNavigate} />}
       {tab === 'deck' && <DeckScreen profile={profile} />}
-      {tab === 'gym' && <GymScreen profile={profile} />}
-      <Nav cur={tab} go={setTab} />
-      <div style={{ position: 'absolute', top: 8, right: 12, zIndex: 20 }}>
-        <button onClick={async () => { await sb.auth.signOut(); }} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 10, cursor: 'pointer', fontFamily: "'JetBrains Mono', monospace" }}>Sign Out</button>
-      </div>
-      {/* DEV: Test preview buttons — remove before shipping */}
-      <div style={{ position: 'absolute', top: 8, left: 12, zIndex: 20, display: 'flex', gap: 4 }}>
-        <button onClick={testGamePlan} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--amber)', fontSize: 8, padding: '3px 6px', borderRadius: 3, cursor: 'pointer', fontFamily: "'JetBrains Mono', monospace" }}>Test GamePlan</button>
-        <button onClick={testPostMatch} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--green)', fontSize: 8, padding: '3px 6px', borderRadius: 3, cursor: 'pointer', fontFamily: "'JetBrains Mono', monospace" }}>Test PostMatch</button>
-      </div>
+      {tab === 'profile' && <ProfileScreen user={user} profile={profile} />}
+      <BottomNav active={tab} onNavigate={setTab} />
     </AppShell>
   );
 }
