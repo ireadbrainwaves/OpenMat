@@ -84,3 +84,28 @@ export function getMoves(posId, belt, deck, overtime, archetype) {
     return true;
   });
 }
+
+// Tiered hand draw: drilled guaranteed, trained fill to 5, 15% chance for 1 known
+export function drawHand(posId, belt, deckIds, deckTiers, overtime, archetype, drilledMoves = []) {
+  const all = getMoves(posId, belt, deckIds, overtime, archetype);
+  if (all.length <= 5) return all;
+
+  const drilledSet = new Set(drilledMoves || []);
+  const drilled = all.filter(t => drilledSet.has(t.id));
+  const trained = all.filter(t => !drilledSet.has(t.id) && (deckTiers[t.id] || 'trained') !== 'known');
+  const known = all.filter(t => (deckTiers[t.id]) === 'known' && !drilledSet.has(t.id));
+
+  const hand = [...drilled];
+  const shuffled = [...trained].sort(() => Math.random() - 0.5);
+  while (hand.length < 5 && shuffled.length > 0) {
+    hand.push(shuffled.shift());
+  }
+
+  // 15% chance: add 1 known move if hand not full
+  if (known.length > 0 && Math.random() < 0.15) {
+    const kn = known[Math.floor(Math.random() * known.length)];
+    if (hand.length < 5) hand.push(kn);
+  }
+
+  return hand;
+}

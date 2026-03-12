@@ -8,7 +8,7 @@ import React, { useState, useEffect } from 'react';
 import { T, ARCHETYPES, BeltColors } from '../lib/tokens';
 import { ArchIcon } from '../lib/icons';
 import { Btn } from '../components/UI';
-import { sb } from '../lib/supabase';
+import { sb, G } from '../lib/supabase';
 
 // Step indicator
 const Steps = ({ current, total }) => (
@@ -111,16 +111,30 @@ function DeckStep({ archetype, deck, setDeck, decks, loadingDecks, onComplete, s
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
         {decks.map(d => {
           const sel = deck === d.id;
-          const moveCount = d.technique_ids ? d.technique_ids.length : 0;
+          const ids = d.technique_ids || [];
+          const moveCount = ids.length;
+          // Compute type stats from G.techniques
+          const stats = { submission: 0, sweep: 0, transition: 0, escape: 0, takedown: 0 };
+          ids.forEach(tid => {
+            const tech = G.techniques[tid];
+            if (tech && stats[tech.type] !== undefined) stats[tech.type]++;
+          });
           return (
             <button key={d.id} onClick={() => setDeck(d.id)} style={{
               padding: "16px", textAlign: "left", background: sel ? `${archData.color}10` : T.surface,
               border: `1px solid ${sel ? archData.color : T.border}`, borderRadius: 6, cursor: "pointer", position: "relative", overflow: "hidden",
             }}>
               {sel && <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: archData.color }}/>}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                 <div style={{ fontFamily: T.display, fontSize: 20, letterSpacing: "0.04em", color: sel ? T.white : T.muted }}>{d.deck_name}</div>
                 <span style={{ fontFamily: T.mono, fontSize: 10, color: T.dim }}>{moveCount} moves</span>
+              </div>
+              <div style={{ fontFamily: T.mono, fontSize: 9, color: T.dim, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {stats.submission > 0 && <span><span style={{ color: T.red }}>{stats.submission}</span> subs</span>}
+                {stats.sweep > 0 && <span><span style={{ color: T.amber }}>{stats.sweep}</span> sweeps</span>}
+                {stats.transition > 0 && <span><span style={{ color: T.blue }}>{stats.transition}</span> trans</span>}
+                {stats.escape > 0 && <span><span style={{ color: T.teal }}>{stats.escape}</span> esc</span>}
+                {stats.takedown > 0 && <span><span style={{ color: T.green }}>{stats.takedown}</span> TD</span>}
               </div>
             </button>
           );
@@ -135,8 +149,10 @@ function DeckStep({ archetype, deck, setDeck, decks, loadingDecks, onComplete, s
   );
 }
 
-export default function OnboardScreen({ user, onDone }) {
-  const [step, setStep] = useState(0);
+// mode: 'full' (default) | 'name_only' (just name → save) | 'archetype_deck' (archetype + deck only)
+export default function OnboardScreen({ user, onDone, mode = 'full' }) {
+  const startStep = mode === 'archetype_deck' ? 1 : 0;
+  const [step, setStep] = useState(startStep);
   const [name, setName] = useState("");
   const [archetype, setArchetype] = useState(null);
   const [deck, setDeck] = useState(null);
@@ -166,18 +182,40 @@ export default function OnboardScreen({ user, onDone }) {
       });
   }, [archetype]);
 
+  // Name-only save: just upsert name, no archetype or deck
+  const handleNameOnly = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const { error: upsertErr } = await sb.from("profiles").upsert({
+        id: user.id,
+        username: name.trim(),
+        belt: "white",
+        elo: 1200,
+        display_name: name.trim(),
+      });
+      if (upsertErr) {
+        console.error("Profile upsert error:", upsertErr);
+        setError("Failed to save profile. Please try again.");
+        setSaving(false);
+        return;
+      }
+      onDone && onDone();
+    } catch (e) {
+      console.error("Onboard error:", e);
+      setError("Something went wrong. Please try again.");
+    }
+    setSaving(false);
+  };
+
   const handleComplete = async () => {
     setSaving(true);
     setError(null);
     try {
-      // Upsert profile
+      // Upsert profile with archetype
       const { error: upsertErr } = await sb.from("profiles").upsert({
         id: user.id,
-        username: name.trim(),
         archetype,
-        belt: "white",
-        elo: 1200,
-        display_name: name.trim(),
       });
       if (upsertErr) {
         console.error("Profile upsert error:", upsertErr);
@@ -207,12 +245,17 @@ export default function OnboardScreen({ user, onDone }) {
     setSaving(false);
   };
 
+  const totalSteps = mode === 'name_only' ? 1 : mode === 'archetype_deck' ? 3 : 4;
+  const stepsOffset = mode === 'archetype_deck' ? -1 : 0;
+
   return (
     <div style={{ padding: "24px 20px 40px", minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       {error && <div style={{ background: "#3A1215", border: `1px solid ${T.red}`, borderRadius: 8, padding: "10px 14px", marginBottom: 12, color: T.red, fontSize: 14, fontFamily: T.body }}>{error}</div>}
-      <Steps current={step} total={4}/>
-      {step === 0 && <NameStep name={name} setName={setName} onNext={() => setStep(1)} />}
-      {step === 1 && <ArchetypeStep archetype={archetype} setArchetype={setArchetype} onNext={() => setStep(2)} onBack={() => setStep(0)} />}
+      <Steps current={step + stepsOffset} total={totalSteps}/>
+      {step === 0 && mode !== 'archetype_deck' && (
+        <NameStep name={name} setName={setName} onNext={mode === 'name_only' ? handleNameOnly : () => setStep(1)} />
+      )}
+      {step === 1 && <ArchetypeStep archetype={archetype} setArchetype={setArchetype} onNext={() => setStep(2)} onBack={mode === 'archetype_deck' ? null : () => setStep(0)} />}
       {step === 2 && <BeltStep onNext={() => setStep(3)} onBack={() => setStep(1)} />}
       {step === 3 && <DeckStep archetype={archetype} deck={deck} setDeck={setDeck} decks={fetchedDecks} loadingDecks={loadingDecks} onComplete={handleComplete} saving={saving} onBack={() => setStep(2)} />}
     </div>

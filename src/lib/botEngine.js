@@ -143,28 +143,30 @@ export const BotEngine = {
 
     console.log('Bot hand debug:', { position: match.current_position, handLength: botHand?.length, botHand });
     if (!botHand || botHand.length === 0) {
-      console.log('Bot has no moves in hand — submitting survive...');
+      // Bot picks survive 70%, spaz 30% (same as player universal moves)
+      const isP1 = match.player1_id === botId;
+      const botGP = isP1 ? match.player1_gp : match.player2_gp;
+      const pickSpaz = botGP >= 3 && Math.random() < 0.3;
+      const choice = pickSpaz ? 'spaz' : 'survive';
+      console.log(`Bot has no moves — picking ${choice} (GP: ${botGP})`);
       try {
-        // Try resolve_survive first
-        const { error: surviveErr } = await supabase.rpc('resolve_survive', {
-          p_match_id: match.id,
-          p_player_id: botId,
-        });
-        if (surviveErr) {
-          console.warn('Bot resolve_survive failed, trying bot_submit_move fallback:', surviveErr.message);
-          const { error: moveErr } = await supabase.rpc('bot_submit_move', {
+        if (choice === 'spaz') {
+          const { error } = await supabase.rpc('resolve_spaz', {
             p_match_id: match.id,
             p_player_id: botId,
-            p_technique_id: 'survive',
-            p_is_counter: false,
           });
-          if (moveErr) console.error('Bot survive fallback also failed:', moveErr.message);
+          if (error) console.error('Bot spaz error:', error.message);
+        } else {
+          const { error } = await supabase.rpc('resolve_survive', {
+            p_match_id: match.id,
+            p_player_id: botId,
+          });
+          if (error) console.error('Bot survive error:', error.message);
         }
-        console.log('Bot survive complete — turn should advance via server');
-        // Return 'survived' sentinel so callers know not to expect a move submission
-        return 'survived';
+        console.log(`Bot ${choice} complete — turn should advance via server`);
+        return choice;
       } catch (err) {
-        console.error('Bot survive failed entirely:', err);
+        console.error(`Bot ${choice} failed entirely:`, err);
         return 'survived';
       }
     }

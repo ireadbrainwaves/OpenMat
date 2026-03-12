@@ -1,6 +1,6 @@
 import React from 'react';
 const { useState, useEffect, useRef, useCallback } = React;
-import { sb, dbg, G, beltOrder, getStatus, getMoves } from '../lib/supabase';
+import { sb, dbg, G, beltOrder, getStatus, drawHand } from '../lib/supabase';
 import { ARCHETYPES, FAMILY_COLORS, GP_COSTS } from '../lib/constants';
 import { T, MTColors, MTLabels, TierDisplay } from '../lib/tokens';
 import { MoveIcon, StanceIcon } from '../lib/icons';
@@ -28,19 +28,11 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
   const [botArchetype, setBotArchetype] = useState(null);
   const [botDifficulty, setBotDifficulty] = useState(null);
 
-  // Survive mechanic
-  const [noMovesConfirmed, setNoMovesConfirmed] = useState(false);
-  const [surviveBusy, setSurviveBusy] = useState(false);
-  const [surviveResult, setSurviveResult] = useState(null);
-  const [caughtBySub, setCaughtBySub] = useState(false);
-
-  const SURVIVE_FLAVOR = {
-    white:  'Hold on -- just survive!',
-    blue:   'Heart over technique -- push through!',
-    purple: 'Trust your defense. Breathe.',
-    brown:  'Grind through. Champions survive.',
-    black:  'Breathe. Survive. Escape is earned.',
-  };
+  // Universal moves shown when hand is empty (not during sub minigame)
+  const universalMoves = [
+    { id: 'survive', name: 'Survive', type: 'universal', description: 'Hunker down. Rest and recover.', gp_cost: 0, gp_recovery: 1, is_universal: true },
+    { id: 'spaz', name: 'Spaz', type: 'universal', description: 'Explosive escape. Costs 3 GP. If opponent subs — checkmate.', gp_cost: 3, gp_recovery: 0, is_universal: true },
+  ];
 
   // Reveal overlay
   const [showReveal, setShowReveal] = useState(false);
@@ -55,8 +47,21 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
   // TAP overlay
   const [tapOverlay, setTapOverlay] = useState(null); // { won: bool, subName: string, winnerName: string }
 
+  // Sub choice reveal
+  const [subReveal, setSubReveal] = useState(null); // { myChoice, oppChoice, isAttacker }
+  const prevSubRoundRef = useRef(0);
+
+  // Chain sub animation
+  const [chainSub, setChainSub] = useState(null); // { oldName, newName }
+  // Escaped overlay
+  const [subEscaped, setSubEscaped] = useState(false);
+  const prevSubTechRef = useRef(null);
+
   // Track what player locked in for the flip card display
   const lastLockedMoveRef = useRef(null);
+
+  // Track last sub choice for reveal (in case server clears before we read)
+  const lastSubChoiceRef = useRef(null);
 
   // Refs to avoid stale closures in polling/subscription
   const matchRef = useRef(null);
@@ -82,6 +87,14 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
   const myGp = amP1 ? (match?.player1_gp ?? 10) : (match?.player2_gp ?? 10);
   const oppGp = amP1 ? (match?.player2_gp ?? 10) : (match?.player1_gp ?? 10);
   const myChain = amP1 ? (match?.player1_chain ?? 0) : (match?.player2_chain ?? 0);
+  // Three hand states:
+  // 1. moves + GP >= 3 → normal hand only
+  // 2. moves + GP < 3 → normal hand + survive at bottom
+  // 3. zero moves → survive + spaz only
+  const inMovePhase = phase === 'move' && !myLocked && deck.length > 0 && myPos && !match?.sub_minigame_active && match?.status !== 'finished';
+  const zeroMoves = inMovePhase && moves.length === 0;
+  const showSurviveExtra = inMovePhase && moves.length > 0 && myGp < 3;
+  if (phase === 'move') console.log('[UNIVERSAL CHECK]', { handLength: moves.length, myGP: myGp, zeroMoves, showSurviveExtra });
 
   // Stance config
   const stancesCfg = [
@@ -103,19 +116,61 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
     // Check if turn advanced -> trigger reveal
     if (m.current_turn > prevTurnRef.current && t && t.length > 0) {
       const latestTurn = t[t.length - 1];
-      triggerReveal(latestTurn);
+      triggerReveal(latestTurn, m);
       prevTurnRef.current = m.current_turn;
     }
 
+    // Detect sub round advancement — show both choices
+    const prev = matchRef.current;
+    if (prev && m.sub_minigame_active && prev.sub_phase !== undefined && m.sub_phase > prev.sub_phase) {
+      const isAtt = m.sub_attacker_id === profile.id;
+      const myC = isAtt ? prev.sub_attacker_choice : prev.sub_defender_choice;
+      const oppC = isAtt ? prev.sub_defender_choice : prev.sub_attacker_choice;
+      if (myC || oppC) {
+        console.log('[SUB]', { sub_phase: m.sub_phase, tighten: m.sub_tighten_turns, active: m.sub_minigame_active, round: m.sub_phase, myChoice: myC, oppChoice: oppC });
+        setSubReveal({ myChoice: myC, oppChoice: oppC, isAttacker: isAtt });
+        setTimeout(() => setSubReveal(null), 1500);
+      }
+    }
+    // Also detect sub ending — show final choices (use ref fallback if server cleared)
+    if (prev && prev.sub_minigame_active && !m.sub_minigame_active) {
+      const isAtt = prev.sub_attacker_id === profile.id;
+      const myC = (isAtt ? prev.sub_attacker_choice : prev.sub_defender_choice) || lastSubChoiceRef.current;
+      const oppC = isAtt ? prev.sub_defender_choice : prev.sub_attacker_choice;
+      console.log('[SUB END]', { myChoice: myC, oppChoice: oppC, isAttacker: isAtt, lastSubChoice: lastSubChoiceRef.current });
+      if (myC || oppC) {
+        setSubReveal({ myChoice: myC, oppChoice: oppC, isAttacker: isAtt });
+        setTimeout(() => setSubReveal(null), 2000);
+      }
+      // Show ESCAPED overlay if sub ended without a submission finish
+      const subFinished = m.status === 'finished' && (m.win_method === 'submission' || m.result_method === 'submission');
+      if (!subFinished) {
+        setSubEscaped(true);
+        setTimeout(() => setSubEscaped(false), 1500);
+      }
+      lastSubChoiceRef.current = null;
+    }
+    prevSubRoundRef.current = m.sub_phase || 0;
+
+    // Detect chain sub — sub_technique_id changed during active minigame
+    if (prev && m.sub_minigame_active && prev.sub_technique_id && m.sub_technique_id && m.sub_technique_id !== prev.sub_technique_id) {
+      const oldTech = G.techniques[prev.sub_technique_id];
+      const newTech = G.techniques[m.sub_technique_id];
+      setChainSub({ oldName: oldTech?.name || 'Submission', newName: newTech?.name || 'Submission' });
+      setTimeout(() => setChainSub(null), 2000);
+    }
+    prevSubTechRef.current = m.sub_technique_id || null;
+
     setMatch(m);
-    setSel(null); setSelectedStance(null);
-    setNoMovesConfirmed(false); setSurviveResult(null); setCaughtBySub(false);
+    setSel(null); setSelectedStance(null); setSubSel(null);
 
     // Handle match end — check for submission finish to show TAP overlay
     if (m.status === 'finished' && !endedRef.current) {
       endedRef.current = true;
-      dbg('Match finished!', 'ok');
-      if (m.win_method === 'submission' || m.result_method === 'submission') {
+      const winMethod = m.win_method || m.result_method || m.method || m.finish_method || m.result || '';
+      console.log('[MATCH END CHECK]', { status: m.status, winner: m.winner_id, win_method: m.win_method, result_method: m.result_method, method: m.method, finish_method: m.finish_method, result: m.result, sub_technique_id: m.sub_technique_id });
+      dbg('Match finished! method=' + winMethod, 'ok');
+      if (winMethod === 'submission' || m.sub_technique_id) {
         const iWon = m.winner_id === profile.id;
         const subTech = m.sub_technique_id ? G.techniques[m.sub_technique_id] : null;
         setTapOverlay({
@@ -173,12 +228,14 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
     ).subscribe();
 
     const poll = setInterval(async () => {
-      const { data: m } = await sb.from('matches').select('current_turn, turn_phase, status, player1_move_locked, player2_move_locked, player1_stance_locked, player2_stance_locked').eq('id', matchId).single();
+      const { data: m } = await sb.from('matches').select('current_turn, turn_phase, status, player1_move_locked, player2_move_locked, player1_stance_locked, player2_stance_locked, sub_minigame_active, sub_phase, sub_tighten_turns, sub_attacker_locked, sub_defender_locked').eq('id', matchId).single();
       if (!m || !matchRef.current) return;
       const prev = matchRef.current;
       if (m.current_turn !== prev.current_turn || m.turn_phase !== prev.turn_phase || m.status !== prev.status ||
           m.player1_move_locked !== prev.player1_move_locked || m.player2_move_locked !== prev.player2_move_locked ||
-          m.player1_stance_locked !== prev.player1_stance_locked || m.player2_stance_locked !== prev.player2_stance_locked) {
+          m.player1_stance_locked !== prev.player1_stance_locked || m.player2_stance_locked !== prev.player2_stance_locked ||
+          m.sub_minigame_active !== prev.sub_minigame_active || m.sub_phase !== prev.sub_phase ||
+          m.sub_tighten_turns !== prev.sub_tighten_turns || m.sub_attacker_locked !== prev.sub_attacker_locked || m.sub_defender_locked !== prev.sub_defender_locked) {
         dbg('Poll detected change -- refreshing', 'ok');
         refreshMatch();
       }
@@ -194,19 +251,45 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
     return m ? m[1].trim() : null;
   }
 
-  function triggerReveal(turn) {
-    const myMove = lastLockedMoveRef.current || { name: 'Your Move', type: 'unknown' };
+  function triggerReveal(turn, freshMatch) {
+    const m = freshMatch || matchRef.current;
+    const isP1 = m?.player1_id === profile.id;
     const variantName = parseVariant(turn.description);
-    const cleanDesc = turn.description ? turn.description.replace(/\s*\[VARIANT:\s*.+?\]/, '').trim() : 'Position holds';
-    // Extract opponent move from turn data, with fallback to match object
-    const oppTechId = amP1
-      ? (turn.player2_technique_id || matchRef.current?.player2_move)
-      : (turn.player1_technique_id || matchRef.current?.player1_move);
-    const oppTech = oppTechId ? G.techniques[oppTechId] : null;
+
+    // Use match fields OR match_turns fields for move IDs (server may clear match fields after resolve)
+    const myMoveId = (isP1 ? m?.player1_move : m?.player2_move) || (isP1 ? turn.player1_technique_id : turn.player2_technique_id) || (isP1 ? turn.player1_move : turn.player2_move);
+    const oppMoveId = (isP1 ? m?.player2_move : m?.player1_move) || (isP1 ? turn.player2_technique_id : turn.player1_technique_id) || (isP1 ? turn.player2_move : turn.player1_move);
+    const myTech = myMoveId ? G.techniques[myMoveId] : null;
+    const oppTech = oppMoveId ? G.techniques[oppMoveId] : null;
+    // Fallback to lastLockedMoveRef if all fields are empty
+    const fallback = lastLockedMoveRef.current || { name: 'Your Move', type: 'unknown' };
+    const myMoveName = myTech?.name || fallback.name;
+    const myMoveType = myTech?.type || fallback.type;
     const oppMoveName = oppTech?.name || 'Defended';
     const oppMoveType = oppTech?.type || 'unknown';
-    console.log('[REVEAL]', { turn: turn.turn_number, oppTechId, oppTech: oppTech?.name, myMove: myMove.name, turnKeys: Object.keys(turn) });
-    setRevealData({ description: cleanDesc, result: turn.result, turn: turn.turn_number, myMoveName: myMove.name, myMoveType: myMove.type, variantName, oppMoveName, oppMoveType });
+
+    // Build better description — avoid generic "escaped" unless escape-type technique
+    let cleanDesc = turn.description ? turn.description.replace(/\s*\[VARIANT:\s*.+?\]/, '').trim() : 'Position holds';
+    if (cleanDesc.toLowerCase().includes('escaped') && oppTech && oppTech.type !== 'escape') {
+      // Replace misleading "escaped" with a counter description
+      if (oppTech && myTech) {
+        cleanDesc = `${myMoveName} countered by ${oppMoveName}!`;
+      }
+    }
+    // If description is very generic, enhance it
+    if (!cleanDesc || cleanDesc === 'Position holds') {
+      if (myTech && turn.result === 'sweep') cleanDesc = `${myMoveName} lands!`;
+      else if (myTech && turn.result === 'submission_win') cleanDesc = `${myMoveName} locked in!`;
+      else if (oppTech && myTech) cleanDesc = `${myMoveName} vs ${oppMoveName}`;
+    }
+
+    // Look up new position name for display
+    const newPos = m?.current_position ? G.positions[m.current_position] : null;
+    const newPosName = newPos?.name?.replace(/ \(.*\)/, '') || null;
+
+    console.log('[REVEAL]', { isPlayer1: isP1, myMoveId, oppMoveId, myMoveName, oppMoveName, description: cleanDesc, turnFields: { p1_tech: turn.player1_technique_id, p2_tech: turn.player2_technique_id, p1_move: turn.player1_move, p2_move: turn.player2_move } });
+    console.log('[REVEAL CARD]', { opponentStance: isP1 ? m?.player2_stance : m?.player1_stance, opponentMove: oppMoveId, oppMoveName, oppMoveType });
+    setRevealData({ description: cleanDesc, result: turn.result, turn: turn.turn_number, myMoveName, myMoveType, variantName: variantName || fallback.variantName, oppMoveName, oppMoveType, newPosName });
     setYourFlipped(false); setOppFlipped(false); setShowResult(false);
     setShowReveal(true);
     setTimeout(() => setYourFlipped(true), 400);
@@ -232,48 +315,28 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
   const deckTiers = {};
   deck.forEach(d => { deckTiers[d.technique_id] = d.tier || 'trained'; });
 
+  // Drilled moves from match state
+  const myDrilled = amP1 ? (match?.player1_drilled_moves || []) : (match?.player2_drilled_moves || []);
+
   useEffect(() => {
     if (myPos && deck.length > 0) {
-      console.log('[HAND] draw_hand equiv — position:', myPos, 'archetype:', profile.archetype, 'belt:', profile.belt, 'deckIds:', deckIds.length, 'techFrom keys:', Object.keys(G.techFrom).filter(k => k.includes('standing')));
-      let m = getMoves(myPos, profile.belt, deckIds, match?.status === 'overtime', profile.archetype);
-      console.log('[HAND] getMoves raw result:', m.length, 'moves:', m.map(x => x.name + '(' + x.type + ')'));
+      console.log('[HAND] drawHand — position:', myPos, 'drilled:', myDrilled.length, 'deckIds:', deckIds.length);
+      let m = drawHand(myPos, profile.belt, deckIds, deckTiers, match?.status === 'overtime', profile.archetype, myDrilled);
+      console.log('[HAND] drawHand result:', m.length, 'moves:', m.map(x => x.name + '(' + x.type + ')'));
+      console.log('[HAND FINAL]', { position: myPos, stance: myStanceVal, movesBeforeRender: m.length, deckSize: deckIds.length, belt: profile.belt });
       if (m.length === 0) {
-        console.warn('[HAND] 0 moves from position, triggering survive');
         for (const dp of ['defending_clinch', 'defending_passing', 'defending_leg_entanglement', 'defending_back', 'defending_mount']) {
-          const defMoves = getMoves(dp, profile.belt, deckIds, false, profile.archetype);
+          const defMoves = drawHand(dp, profile.belt, deckIds, deckTiers, false, profile.archetype, myDrilled);
           if (defMoves.length > 0) { m = defMoves; console.log('[HAND] fallback hit:', dp, defMoves.length); break; }
         }
       }
       setMoves(m);
-    } else {
-      // Silently skip — hand will redraw when position/deck load
     }
-  }, [myPos, deck, match?.status]);
+  }, [myPos, deck, match?.status, match?.current_turn]);
 
-  // Check has_moves_from_position when hand comes up empty during move phase
-  useEffect(() => {
-    if (phase === 'move' && !myLocked && moves.length === 0 && myPos && match?.status !== 'finished') {
-      (async () => {
-        const { data } = await sb.rpc('has_moves_from_position', { p_profile_id: profile.id, p_position: myPos });
-        setNoMovesConfirmed(data === false);
-      })();
-    } else {
-      setNoMovesConfirmed(false);
-    }
-  }, [phase, myLocked, moves.length, myPos, match?.status]);
+  // (Old auto-survive removed — player now chooses between Survive and Spaz universal moves)
 
   const oppTendency = turnHistory.slice(-3).map(t => amP1 ? t.player2_stance : t.player1_stance).filter(Boolean);
-
-  // Filter counters to current position only — strict match required
-  const allCounters = Object.values(G.counters);
-  const counters = allCounters.filter(c => {
-    const cPos = c.from_position || c.position || c.applicable_position;
-    return cPos && cPos === myPos;
-  });
-
-  // Stance does NOT filter the hand — it only affects resolution bonuses (server-side).
-  // Available moves are determined purely by position + deck.
-  const showCounters = true;
 
   // ── ACTIONS ─────────────────────────────────────────────
   async function lockStance(stance) {
@@ -288,13 +351,50 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
 
   async function lockMove() {
     if (!sel || busy) return; setBusy(true);
-    const allM = [...moves, ...counters.map(c => ({ ...c, type: 'counter' }))];
+
+    // Handle universal moves (survive / spaz)
+    if (sel.is_universal) {
+      const uMove = universalMoves.find(u => u.id === sel.id);
+      lastLockedMoveRef.current = { name: uMove?.name || sel.id, type: 'universal', variantName: null };
+      console.log('[UNIVERSAL]', sel.id, '— submitting');
+
+      if (sel.id === 'survive') {
+        const { error } = await sb.rpc('resolve_survive', { p_match_id: matchId, p_player_id: profile.id });
+        if (error) dbg('Survive error: ' + error.message, 'err');
+      } else if (sel.id === 'spaz') {
+        const { error } = await sb.rpc('resolve_spaz', { p_match_id: matchId, p_player_id: profile.id });
+        if (error) dbg('Spaz error: ' + error.message, 'err');
+      }
+
+      // Always refresh after universal move RPC to pick up state changes
+      await refreshMatch();
+
+      // Bot response for universal moves
+      if (isBotMatch) {
+        const m = matchRef.current;
+        const botDrills = m?.player1_id === botId ? (m?.player1_drilled_moves || []) : (m?.player2_drilled_moves || []);
+        const botPos = m?.player1_id === botId ? (m?.player1_position || m?.current_position) : (m?.player2_position || m?.current_position);
+        const { data: botHand } = await sb.rpc('draw_hand', {
+          p_profile_id: botId,
+          p_position: botPos || m?.current_position,
+          p_archetype: botArchetype,
+          p_drilled_moves: botDrills,
+        });
+        await BotEngine.respondToMove(m, botId, botArchetype, botHand, botDrills, myStanceVal, botDifficulty);
+        setTimeout(() => refreshMatch(), 500);
+      }
+      setBusy(false);
+      return;
+    }
+
+    // Normal move
+    const allM = [...moves];
     const played = allM.find(m => m.id === sel.id);
     const variant = variantMap[sel.id];
     lastLockedMoveRef.current = played
-      ? { name: played.name, type: played.type || 'counter', variantName: variant?.variant_name || null }
+      ? { name: played.name, type: played.type || 'unknown', variantName: variant?.variant_name || null }
       : { name: '???', type: 'unknown', variantName: null };
-    const { error } = await sb.rpc('submit_move', { p_match_id: matchId, p_technique_id: sel.id, p_is_counter: sel.isCounter || false, p_is_bait: false, p_feint_move: null });
+    const { error } = await sb.rpc('submit_move', { p_match_id: matchId, p_technique_id: sel.id, p_is_counter: false, p_is_bait: false, p_feint_move: null });
     if (error) dbg('Move error: ' + error.message, 'err');
     if (!error && isBotMatch) {
       const m = matchRef.current;
@@ -307,53 +407,15 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
         p_drilled_moves: botDrills,
       });
       await BotEngine.respondToMove(m, botId, botArchetype, botHand, botDrills, myStanceVal, botDifficulty);
-      // After bot responds (including survive), refresh to pick up turn advancement
       setTimeout(() => refreshMatch(), 500);
     }
     setBusy(false);
   }
 
-  async function handleSurvive() {
-    if (surviveBusy) return;
-    setSurviveBusy(true);
-    // Player survive first — signal the server that this player has no moves
-    const { data, error } = await sb.rpc('resolve_survive', { p_match_id: matchId, p_player_id: profile.id });
-    if (error) dbg('Survive error: ' + error.message, 'err');
-    const result = Array.isArray(data) ? data[0] : data;
-    setSurviveResult(result || { success: false, message: 'Position held.' });
-
-    if (isBotMatch) {
-      const m = matchRef.current;
-      const botDrills = m?.player1_id === botId ? (m?.player1_drilled_moves || []) : (m?.player2_drilled_moves || []);
-      const botPos = m?.player1_id === botId ? (m?.player1_position || m?.current_position) : (m?.player2_position || m?.current_position);
-      const { data: botHand } = await sb.rpc('draw_hand', {
-        p_profile_id: botId,
-        p_position: botPos || m?.current_position,
-        p_archetype: botArchetype,
-        p_drilled_moves: botDrills,
-      });
-      let botHasSub = false;
-      if (botHand && botHand.length > 0) {
-        const { data: techs } = await sb.from('techniques').select('id, type').in('id', botHand);
-        botHasSub = techs?.some(t => t.type === 'submission');
-      }
-      if (botHasSub) {
-        setCaughtBySub(true);
-        setSurviveBusy(false);
-        await BotEngine.respondToMove(m, botId, botArchetype, botHand, botDrills, myStanceVal, botDifficulty);
-        setTimeout(() => refreshMatch(), 500);
-        return;
-      }
-      await BotEngine.respondToMove(m, botId, botArchetype, botHand, botDrills, myStanceVal, botDifficulty);
-      // After bot responds (including bot survive), refresh to advance turn
-      setTimeout(() => refreshMatch(), 500);
-    }
-    setSurviveBusy(false);
-  }
-
   async function lockSubChoice() {
     if (!subSel || busy) return;
     setBusy(true);
+    lastSubChoiceRef.current = subSel;
     const { error } = await sb.rpc('submit_sub_choice', { p_match_id: matchId, p_choice: subSel });
     if (error) {
       dbg('Sub err: ' + error.message, 'err');
@@ -361,7 +423,8 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
       setSubSel(null);
       if (isBotMatch && match?.sub_minigame_active) {
         const botIsAttacker = match.sub_attacker_id === botId;
-        BotEngine.respondToSubMinigame(match, botId, botIsAttacker, botDifficulty);
+        await BotEngine.respondToSubMinigame(match, botId, botIsAttacker, botDifficulty);
+        setTimeout(() => refreshMatch(), 500);
       }
     }
     setBusy(false);
@@ -534,54 +597,45 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
               ))}
             </div>
 
-            {/* Survive UI -- no moves available */}
-            {noMovesConfirmed && !caughtBySub && (
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 24px', gap: 14 }}>
-                <StanceIcon stance="defend" size={48} />
-                <div style={{ ...F.display, fontSize: 22, textAlign: 'center', color: T.text }}>No Moves Available</div>
-                <div style={{ ...F.mono, fontSize: 11, color: T.muted, textAlign: 'center' }}>
-                  {SURVIVE_FLAVOR[profile.belt] || SURVIVE_FLAVOR.white}
+            {/* State 3: Zero moves — Survive + Spaz desperation */}
+            {zeroMoves && (
+              <div style={{ flex: 1, overflowY: 'auto', padding: '6px 18px 0', minHeight: 0 }}>
+                <div style={{ textAlign: 'center', marginBottom: 12 }}>
+                  <div style={{ ...F.display, fontSize: 20, color: T.text }}>No Moves Available</div>
+                  <div style={{ ...F.mono, fontSize: 10, color: T.dim, marginTop: 4 }}>Choose a last-resort option</div>
                 </div>
-                {surviveResult ? (
-                  <div style={{ width: '100%', padding: 14, borderRadius: 10, border: `1px solid ${surviveResult.success ? T.green + '50' : T.red + '50'}`, background: surviveResult.success ? T.green + '0A' : T.red + '0A', textAlign: 'center' }}>
-                    <div style={{ ...F.display, fontSize: 20, color: surviveResult.success ? T.green : T.red, marginBottom: 4 }}>
-                      {surviveResult.success ? 'SURVIVED' : 'HELD DOWN'}
-                    </div>
-                    {surviveResult.roll !== undefined && (
-                      <div style={{ ...F.mono, fontSize: 9, color: T.muted, marginBottom: 4 }}>
-                        Roll {surviveResult.roll} vs threshold {surviveResult.final_chance ?? surviveResult.threshold ?? '?'}
-                        {surviveResult.chain_penalty ? ` (chain -${Math.abs(surviveResult.chain_penalty)})` : ''}
+                {universalMoves.map(u => {
+                  const isSurvive = u.id === 'survive';
+                  const canAfford = myGp >= u.gp_cost;
+                  const isSel = sel?.id === u.id;
+                  const borderColor = isSurvive ? '#457B9D' : '#E63946';
+                  return (
+                    <div key={u.id} onClick={() => canAfford && setSel({ id: u.id, is_universal: true })}
+                      style={{
+                        padding: '14px 14px', borderRadius: 10, marginBottom: 8, cursor: canAfford ? 'pointer' : 'default',
+                        opacity: canAfford ? 1 : 0.35, transition: 'all 0.15s',
+                        border: `2px dashed ${isSel ? borderColor : borderColor + '60'}`,
+                        background: isSel ? borderColor + '12' : T.surface + '80',
+                      }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                        <span style={{ fontSize: 20 }}>{isSurvive ? '\u{1F6E1}' : '\u{1F4A5}'}</span>
+                        <span style={{ ...F.display, fontSize: 16, color: T.text }}>{u.name}</span>
+                        {isSel && <div style={{ width: 14, height: 14, borderRadius: '50%', background: borderColor, display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: 'auto' }}>
+                          <svg viewBox="0 0 12 12" width={7} height={7}><path d="M2 6L5 9L10 3" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                        </div>}
                       </div>
-                    )}
-                    <div style={{ ...F.mono, fontSize: 10, color: T.text }}>{surviveResult.message || ''}</div>
-                  </div>
-                ) : (
-                  <Btn onClick={handleSurvive} disabled={surviveBusy} style={{ width: '100%' }}>
-                    {surviveBusy ? <Spinner /> : 'Survive'}
-                  </Btn>
-                )}
+                      <div style={{ ...F.mono, fontSize: 10, color: T.muted, marginBottom: 4 }}>{u.description}</div>
+                      <div style={{ ...F.mono, fontSize: 9, color: isSurvive ? '#457B9D' : (canAfford ? '#E63946' : T.dim) }}>
+                        {isSurvive ? '0 GP \u2022 +1 recovery' : canAfford ? '3 GP \u2022 CHECKMATE RISK' : 'Not enough GP'}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
-            {/* CAUGHT -- opponent sub while you have no moves */}
-            {noMovesConfirmed && caughtBySub && (
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 24px', gap: 14 }}>
-                <svg viewBox="0 0 48 48" width={48} height={48} fill="none">
-                  <circle cx="24" cy="24" r="20" stroke={T.red} strokeWidth="2" fill={T.red + '10'} />
-                  <path d="M16 16L32 32M32 16L16 32" stroke={T.red} strokeWidth="2.5" strokeLinecap="round" />
-                </svg>
-                <div style={{ ...F.display, fontSize: 26, textAlign: 'center', color: T.red }}>CAUGHT!</div>
-                <div style={{ ...F.mono, fontSize: 11, color: T.muted, textAlign: 'center' }}>
-                  No escape routes -- opponent is attacking a submission!
-                </div>
-                <div style={{ ...F.mono, fontSize: 9, color: T.dim, textAlign: 'center' }}>
-                  Entering submission minigame at disadvantage...
-                </div>
-              </div>
-            )}
-
-            {/* Hand -- filtered by position */}
-            {!noMovesConfirmed && (
+            {/* States 1 & 2: Normal hand (+ survive at bottom when GP < 3) */}
+            {!zeroMoves && (
               <div style={{ flex: 1, overflowY: 'auto', padding: '6px 18px 0', minHeight: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
                   <span style={{ ...F.mono, fontSize: 9, color: T.muted, textTransform: 'uppercase' }}>Your Hand</span>
@@ -591,53 +645,59 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
                 {console.log('[HAND DEBUG]', { stance: myStanceVal, movesCount: moves.length, moves: moves.map(m => m.name + '(' + m.type + ')') })}
                 {moves.map(m => {
                   const tier = deckTiers[m.id] || 'trained';
+                  const isDrilled = myDrilled.includes(m.id);
+                  const effectiveTier = isDrilled ? 'drilled' : tier;
                   const effGP = getEffGP(m);
                   const canAfford = myGp >= effGP;
                   const isSel = sel?.id === m.id && !sel?.isCounter;
-                  const td = TierDisplay[tier] || TierDisplay.trained;
+                  const td = TierDisplay[effectiveTier] || TierDisplay.trained;
                   const typeColor = MTColors[m.type] || T.muted;
                   const hasVariant = !!variantMap[m.id];
+                  const isKnown = effectiveTier === 'known';
 
                   return (
                     <div key={m.id} onClick={() => canAfford && setSel({ id: m.id, isCounter: false })} style={{
                       display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, marginBottom: 4,
-                      cursor: canAfford ? 'pointer' : 'default', opacity: canAfford ? 1 : 0.3, transition: 'all 0.15s',
+                      cursor: canAfford ? 'pointer' : 'default', opacity: canAfford ? (isKnown ? 0.55 : 1) : 0.3, transition: 'all 0.15s',
                       position: 'relative', overflow: 'hidden',
-                      border: `1px solid ${isSel ? typeColor : tier === 'drilled' ? T.gold + '40' : T.border}`,
-                      background: isSel ? typeColor + '10' : tier === 'drilled' ? T.gold + '06' : T.surface,
+                      border: `1px solid ${isSel ? typeColor : isDrilled ? '#FFD700' + '50' : isKnown ? T.dim + '40' : T.border}`,
+                      background: isSel ? typeColor + '10' : isDrilled ? '#FFD700' + '08' : T.surface,
+                      boxShadow: isDrilled && !isSel ? '0 0 8px #FFD70015' : 'none',
                     }}>
                       {/* Left accent bar */}
-                      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: isSel ? typeColor : tier === 'drilled' ? T.gold : 'transparent', opacity: 0.6 }} />
+                      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: isSel ? typeColor : isDrilled ? '#FFD700' : isKnown ? T.dim + '40' : 'transparent', opacity: 0.7 }} />
 
                       {/* Type icon */}
-                      <div style={{ width: 26, height: 26, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: typeColor + '14' }}>
+                      <div style={{ width: 26, height: 26, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: typeColor + '14', position: 'relative' }}>
                         <MoveIcon type={m.type} size={16} />
+                        {isDrilled && <span style={{ position: 'absolute', top: -4, right: -4, fontSize: 10, lineHeight: 1, color: '#FFD700', textShadow: '0 0 4px #FFD70080' }}>★</span>}
                       </div>
 
                       {/* Move info */}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <span style={{ fontSize: 12, fontWeight: 600, fontFamily: T.body, color: isSel ? T.white : hasVariant ? T.gold : T.text }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, fontFamily: T.body, color: isSel ? T.white : hasVariant ? T.gold : isKnown ? T.dim : T.text }}>
                             {hasVariant ? variantMap[m.id].variant_name : m.name}
                           </span>
                           {hasVariant && <span style={{ color: T.gold, fontSize: 10, lineHeight: 1 }}>&#9670;</span>}
-                          <span style={{ fontSize: 9, color: td.c, lineHeight: 1 }}>{td.sym}</span>
+                          {isDrilled && <span style={{ fontSize: 9, color: '#FFD700', lineHeight: 1 }}>★</span>}
+                          {!isDrilled && <span style={{ fontSize: 9, color: td.c, lineHeight: 1 }}>{td.sym}</span>}
                         </div>
-                        <div style={{ ...F.mono, fontSize: 8, color: T.muted, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}>
+                        <div style={{ ...F.mono, fontSize: 8, color: isKnown ? T.dim : T.muted, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}>
                           <span style={{ fontSize: 7, padding: '1px 4px', borderRadius: 2, background: typeColor + '18', color: typeColor }}>{MTLabels[m.type] || 'MOVE'}</span>
                           <span style={{ color: T.dim }}>
                             {hasVariant ? m.name + ' > ' : ''}
                             {m.to_position ? G.positions[m.to_position]?.name?.replace(/ \(.*\)/, '') : 'SUBMISSION'}
                           </span>
-                          {tier === 'drilled' && <span style={{ color: T.green }}>+15%</span>}
-                          {tier === 'known' && <span style={{ color: T.red }}>-10%</span>}
+                          {isDrilled && <span style={{ color: T.green }}>+15%</span>}
+                          {isKnown && <span style={{ color: T.red }}>+1 GP</span>}
                         </div>
                       </div>
 
                       {/* GP cost */}
                       <div style={{ textAlign: 'center', flexShrink: 0, minWidth: 32 }}>
-                        {tier === 'drilled' && <div style={{ ...F.mono, fontSize: 8, color: T.green, textDecoration: 'line-through', textDecorationColor: T.muted }}>{m.gp_cost || GP_COSTS[m.type] || 1}</div>}
-                        <div style={{ ...F.display, fontSize: 16, lineHeight: 1, color: tier === 'drilled' ? T.gold : !canAfford ? T.red : T.muted }}>{effGP}</div>
+                        {isDrilled && <div style={{ ...F.mono, fontSize: 8, color: T.green, textDecoration: 'line-through', textDecorationColor: T.muted }}>{m.gp_cost || GP_COSTS[m.type] || 1}</div>}
+                        <div style={{ ...F.display, fontSize: 16, lineHeight: 1, color: isDrilled ? '#FFD700' : isKnown ? T.red : !canAfford ? T.red : T.muted }}>{effGP}</div>
                         <div style={{ ...F.mono, fontSize: 7, color: T.dim }}>GP</div>
                       </div>
 
@@ -651,50 +711,38 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
                   );
                 })}
 
-                {/* Counters -- styled cards, only in defend/setup */}
-                {showCounters && counters.length === 0 && (
-                  <div style={{ ...F.mono, fontSize: 9, color: T.dim, textAlign: 'center', padding: '10px 0' }}>
-                    No counters available from this position
-                  </div>
-                )}
-                {showCounters && counters.length > 0 && (
-                  <>
-                    <div style={{ ...F.mono, fontSize: 8, color: T.dim, textTransform: 'uppercase', margin: '10px 0 5px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <MoveIcon type="counter" size={12} />
-                      Counters <span style={{ color: T.green }}>0GP</span>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, paddingBottom: 8 }}>
-                      {counters.map(c => {
-                        const cSel = sel?.id === c.id && sel?.isCounter;
-                        return (
-                          <div key={c.id} onClick={() => setSel({ id: c.id, isCounter: true })} style={{
-                            display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 6, cursor: 'pointer',
-                            border: `1px solid ${cSel ? T.gray : T.border}`,
-                            background: cSel ? T.gray + '10' : T.surface,
-                            transition: 'all 0.15s',
-                          }}>
-                            <MoveIcon type="counter" size={14} />
-                            <span style={{ ...F.body, fontSize: 11, fontWeight: 500, color: cSel ? T.text : T.muted }}>{c.name}</span>
-                            <span style={{ ...F.mono, fontSize: 9, color: T.green, marginLeft: 'auto' }}>0GP</span>
-                            {cSel && (
-                              <div style={{ width: 14, height: 14, borderRadius: '50%', background: T.gray, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <svg viewBox="0 0 12 12" width={7} height={7}><path d="M2 6L5 9L10 3" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
+                {/* State 2: Survive card at bottom when GP < 3 */}
+                {showSurviveExtra && (() => {
+                  const isSel = sel?.id === 'survive' && sel?.is_universal;
+                  return (
+                    <>
+                      <div style={{ height: 1, background: T.border, margin: '10px 0 8px' }} />
+                      <div onClick={() => setSel({ id: 'survive', is_universal: true })}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 6, marginBottom: 4,
+                          cursor: 'pointer', transition: 'all 0.15s',
+                          border: `1.5px dashed ${isSel ? '#457B9D' : '#457B9D60'}`,
+                          background: isSel ? '#457B9D12' : 'transparent',
+                        }}>
+                        <span style={{ fontSize: 14 }}>{'\u{1F6E1}'}</span>
+                        <span style={{ ...F.body, fontSize: 11, fontWeight: 500, color: isSel ? T.text : T.muted }}>Survive</span>
+                        <span style={{ ...F.mono, fontSize: 9, color: '#457B9D', marginLeft: 'auto' }}>Recover &bull; +1 GP</span>
+                        {isSel && <div style={{ width: 12, height: 12, borderRadius: '50%', background: '#457B9D', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <svg viewBox="0 0 12 12" width={6} height={6}><path d="M2 6L5 9L10 3" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                        </div>}
+                      </div>
+                    </>
+                  );
+                })()}
+
               </div>
             )}
 
             {/* Bottom lock-in */}
-            {!noMovesConfirmed && (
+            {(
               <div style={{ flexShrink: 0, padding: '8px 18px 28px', borderTop: `1px solid ${T.border}`, background: `linear-gradient(0deg, ${T.bg}, ${T.surface})` }}>
                 <Btn onClick={lockMove} disabled={!sel || busy} style={{ animation: sel ? 'pulseGlow 2s infinite' : 'none' }}>
-                  {busy ? <Spinner /> : sel ? 'Lock In Move' : 'Select a Move'}
+                  {busy ? <Spinner /> : sel?.is_universal ? `Lock In ${sel.id === 'survive' ? 'Survive' : 'Spaz'}` : sel ? 'Lock In Move' : 'Select a Move'}
                 </Btn>
               </div>
             )}
@@ -736,8 +784,8 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
           const isAtt = match.sub_attacker_id === profile.id;
           const subTech = G.techniques[match.sub_technique_id];
           const myLk = isAtt ? match.sub_attacker_locked : match.sub_defender_locked;
-          const tighten = match?.sub_tighten ?? 0;
-          const subRound = match?.sub_round ?? 1;
+          const tighten = match?.sub_tighten_turns ?? 0;
+          const subRound = match?.sub_phase ?? 1;
 
           const attOpts = [
             { id: 'squeeze', label: 'Squeeze', desc: 'Commit fully', cost: 2, color: T.red },
@@ -758,11 +806,18 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
               {/* Sub header */}
               <div style={{ textAlign: 'center', margin: '12px 0', padding: 14, background: T.red + '0A', borderRadius: 10, border: `1px solid ${T.red}30` }}>
                 <div style={{ ...F.mono, fontSize: 11, color: T.red, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Submission</div>
-                <div style={{ ...F.display, fontSize: 22, color: T.text, marginTop: 2 }}>{subTech?.name || 'Submission'}</div>
+                {chainSub ? (
+                  <div style={{ marginTop: 2 }}>
+                    <div style={{ ...F.display, fontSize: 16, color: T.dim, textDecoration: 'line-through', opacity: 0.5 }}>{chainSub.oldName}</div>
+                    <div style={{ ...F.display, fontSize: 22, color: '#FFD700', animation: 'chainGold 0.5s ease-out', textShadow: '0 0 12px #FFD70040' }}>Chain &rarr; {chainSub.newName}!</div>
+                  </div>
+                ) : (
+                  <div style={{ ...F.display, fontSize: 22, color: T.text, marginTop: 2 }}>{subTech?.name || 'Submission'}</div>
+                )}
                 <div style={{ ...F.mono, fontSize: 11, color: T.muted, marginTop: 4 }}>{isAtt ? 'Finish it!' : 'Escape or survive!'}</div>
               </div>
 
-              {/* Tighten meter */}
+              {/* Tighten meter — animated */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 10 }}>
                 <span style={{ ...F.mono, fontSize: 8, color: T.dim, width: 50, textAlign: 'right' }}>TIGHTEN</span>
                 <div style={{ display: 'flex', gap: 3 }}>
@@ -770,12 +825,35 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
                     <div key={i} style={{
                       width: 28, height: 7, borderRadius: 3,
                       background: i <= tighten ? T.red : T.dim + '30',
-                      transition: 'background 0.3s',
+                      transition: 'background 0.4s, box-shadow 0.4s',
+                      boxShadow: i === tighten ? `0 0 6px ${T.red}60` : 'none',
+                      animation: i === tighten ? 'meterPulse 0.6s ease-out' : 'none',
                     }} />
                   ))}
                 </div>
                 <span style={{ ...F.mono, fontSize: 9, color: tighten >= 4 ? T.red : T.muted, width: 30 }}>{tighten}/5</span>
               </div>
+
+              {/* Sub choice reveal overlay */}
+              {subReveal && (
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginBottom: 12, animation: 'fadeUp 0.3s ease-out' }}>
+                  <div style={{ flex: 1, padding: '8px 10px', borderRadius: 8, textAlign: 'center',
+                    background: subReveal.myChoice === 'squeeze' ? T.red + '18' : subReveal.myChoice === 'adjust' ? T.amber + '18' : subReveal.myChoice === 'transition_sub' ? T.purple + '18' : subReveal.myChoice === 'technical_escape' ? T.teal + '18' : subReveal.myChoice === 'explode' ? T.red + '18' : T.blue + '18',
+                    border: `1px solid ${subReveal.myChoice === 'squeeze' ? T.red : subReveal.myChoice === 'adjust' ? T.amber : subReveal.myChoice === 'transition_sub' ? T.purple : subReveal.myChoice === 'technical_escape' ? T.teal : subReveal.myChoice === 'explode' ? T.red : T.blue}40`,
+                  }}>
+                    <div style={{ ...F.mono, fontSize: 8, color: T.muted, marginBottom: 2 }}>YOU</div>
+                    <div style={{ ...F.body, fontSize: 11, fontWeight: 600, color: T.text }}>{subReveal.myChoice?.replace('_', ' ')}</div>
+                  </div>
+                  <div style={{ ...F.mono, fontSize: 9, color: T.dim, alignSelf: 'center' }}>vs</div>
+                  <div style={{ flex: 1, padding: '8px 10px', borderRadius: 8, textAlign: 'center',
+                    background: subReveal.oppChoice === 'squeeze' ? T.red + '18' : subReveal.oppChoice === 'adjust' ? T.amber + '18' : subReveal.oppChoice === 'transition_sub' ? T.purple + '18' : subReveal.oppChoice === 'technical_escape' ? T.teal + '18' : subReveal.oppChoice === 'explode' ? T.red + '18' : T.blue + '18',
+                    border: `1px solid ${subReveal.oppChoice === 'squeeze' ? T.red : subReveal.oppChoice === 'adjust' ? T.amber : subReveal.oppChoice === 'transition_sub' ? T.purple : subReveal.oppChoice === 'technical_escape' ? T.teal : subReveal.oppChoice === 'explode' ? T.red : T.blue}40`,
+                  }}>
+                    <div style={{ ...F.mono, fontSize: 8, color: T.muted, marginBottom: 2 }}>OPP</div>
+                    <div style={{ ...F.body, fontSize: 11, fontWeight: 600, color: T.text }}>{subReveal.oppChoice?.replace('_', ' ')}</div>
+                  </div>
+                </div>
+              )}
 
               {/* Round indicators */}
               <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 14 }}>
@@ -891,9 +969,9 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
                 {/* Card front */}
                 <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', transform: 'rotateY(180deg)', borderRadius: 6, display: 'flex', flexDirection: 'column', padding: 14, background: '#050d1a', border: `1px solid ${T.blue}` }}>
                   <div style={{ ...F.mono, fontSize: 8, color: T.blue, textTransform: 'uppercase', marginBottom: 4 }}>Opponent</div>
-                  <div style={{ ...F.mono, fontSize: 7, padding: '2px 5px', border: `1px solid ${T.blue}`, borderRadius: 2, color: T.blue, textTransform: 'uppercase', alignSelf: 'flex-start', marginBottom: 8 }}>{revealData?.oppMoveType ? (MTLabels[revealData.oppMoveType] || oppStanceVal?.toUpperCase()) : (oppStanceVal === 'attack' ? 'ATK' : oppStanceVal === 'defend' ? 'DEF' : 'SET')}</div>
+                  <div style={{ ...F.mono, fontSize: 7, padding: '2px 5px', border: `1px solid ${T.blue}`, borderRadius: 2, color: T.blue, textTransform: 'uppercase', alignSelf: 'flex-start', marginBottom: 8 }}>{MTLabels[revealData?.oppMoveType] || 'MOVE'}</div>
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                    <div style={{ ...F.display, fontSize: 20, color: '#7aaee0', lineHeight: 1.1 }}>{revealData?.oppMoveName || opp.display_name}</div>
+                    <div style={{ ...F.display, fontSize: 20, color: '#7aaee0', lineHeight: 1.1 }}>{revealData?.oppMoveName || 'Defended'}</div>
                   </div>
                   <div style={{ ...F.mono, fontSize: 8, color: T.muted }}>{opp.display_name}</div>
                 </div>
@@ -914,6 +992,9 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
               </div>
             )}
             <div style={{ ...F.display, fontSize: 28, lineHeight: 1, marginBottom: 4, color: revealData.result === 'submission_win' ? T.red : revealData.result === 'sweep' ? T.green : T.amber }}>{revealData.description}</div>
+            {revealData.newPosName && (
+              <div style={{ ...F.mono, fontSize: 10, color: T.muted, marginTop: 6 }}>&rarr; {revealData.newPosName}</div>
+            )}
             <div style={{ ...F.mono, fontSize: 8, color: T.dim, marginTop: 10 }}>Tap anywhere to continue</div>
           </div>
         </div>
@@ -948,6 +1029,24 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
         </div>
       )}
 
+      {/* ═══ ESCAPED OVERLAY ═══ */}
+      {subEscaped && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 99,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(0,0,0,0.7)',
+          animation: 'fadeUp 0.3s ease-out',
+          pointerEvents: 'none',
+        }}>
+          <div style={{
+            ...F.display, fontSize: 56, fontWeight: 900, color: '#2A9D8F',
+            letterSpacing: '0.06em', lineHeight: 1,
+            animation: 'escapeBurst 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+            textShadow: '0 0 30px #2A9D8F60, 0 4px 20px rgba(0,0,0,0.4)',
+          }}>ESCAPED!</div>
+        </div>
+      )}
+
       {/* ═══ KEYFRAMES ═══ */}
       <style>{`
         @keyframes pulseOut { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(2.4); opacity: 0; } }
@@ -956,6 +1055,10 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
         @keyframes shimmer { 0%, 100% { opacity: 1; filter: brightness(1); } 50% { opacity: 0.85; filter: brightness(1.3); } }
         @keyframes tapBounce { 0% { transform: scale(0); opacity: 0; } 50% { transform: scale(1.15); } 100% { transform: scale(1); opacity: 1; } }
         @keyframes tapShake { 0% { transform: translateX(0); } 15% { transform: translateX(-6px); } 30% { transform: translateX(5px); } 45% { transform: translateX(-4px); } 60% { transform: translateX(3px); } 75% { transform: translateX(-1px); } 100% { transform: translateX(0); } }
+        @keyframes meterPulse { 0% { transform: scaleY(1); } 30% { transform: scaleY(1.8); } 100% { transform: scaleY(1); } }
+        @keyframes fadeUp { 0% { opacity: 0; transform: translateY(8px); } 100% { opacity: 1; transform: translateY(0); } }
+        @keyframes chainGold { 0% { opacity: 0; transform: translateX(-20px); } 100% { opacity: 1; transform: translateX(0); } }
+        @keyframes escapeBurst { 0% { transform: scale(0); opacity: 0; } 50% { transform: scale(1.2); } 100% { transform: scale(1); opacity: 1; } }
       `}</style>
     </div>
   );

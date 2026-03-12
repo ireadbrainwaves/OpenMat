@@ -1,6 +1,6 @@
 import React from 'react';
 const { useState, useEffect, useRef, useCallback } = React;
-import { sb, dbg, G, getStatus, getMoves } from '../lib/supabase';
+import { sb, dbg, G, getStatus, drawHand } from '../lib/supabase';
 import { GP_COSTS } from '../lib/constants';
 import { T, MTColors, MTLabels, TierDisplay } from '../lib/tokens';
 import { MoveIcon, StanceIcon } from '../lib/icons';
@@ -13,6 +13,15 @@ import BotEngine from '../lib/botEngine';
 // ═══════════════════════════════════════════════════════════
 
 const COACH_UUID = '00000001-0000-0000-0000-000000000001';
+
+// Hardcoded tutorial deck — 1 move per position, all drilled
+const TUTORIAL_DECK = [
+  't_guard_pull',              // standing_neutral → guard_closed
+  't_closed_guard_armbar',     // guard_closed → submission
+  't_sc_escape_shrimp',        // side_control_bottom → guard_half_bottom
+  't_mount_escape_upa',        // mount_bottom → guard_closed_top
+  't_closed_guard_scissor_sweep' // guard_closed → mount_top
+];
 
 // Tutorial step definitions
 const STEPS = {
@@ -44,11 +53,11 @@ export default function TutorialScreen({ profile, user, onComplete }) {
   const [selectedStance, setSelectedStance] = useState(null);
   const [variantMap, setVariantMap] = useState({});
 
-  // Survive
-  const [noMovesConfirmed, setNoMovesConfirmed] = useState(false);
-  const [surviveBusy, setSurviveBusy] = useState(false);
-  const [surviveResult, setSurviveResult] = useState(null);
-  const [caughtBySub, setCaughtBySub] = useState(false);
+  // Universal moves shown when hand is empty (not during sub minigame)
+  const universalMoves = [
+    { id: 'survive', name: 'Survive', type: 'universal', description: 'Hunker down. Rest and recover.', gp_cost: 0, gp_recovery: 1, is_universal: true },
+    { id: 'spaz', name: 'Spaz', type: 'universal', description: 'Explosive escape. Costs 3 GP. If opponent subs — checkmate.', gp_cost: 3, gp_recovery: 0, is_universal: true },
+  ];
 
   // Reveal
   const [showReveal, setShowReveal] = useState(false);
@@ -57,6 +66,13 @@ export default function TutorialScreen({ profile, user, onComplete }) {
   const [oppFlipped, setOppFlipped] = useState(false);
   const [showResult, setShowResult] = useState(false);
 
+  // TAP overlay
+  const [tapOverlay, setTapOverlay] = useState(null);
+  // Sub choice reveal
+  const [subReveal, setSubReveal] = useState(null);
+  // Escaped overlay
+  const [subEscaped, setSubEscaped] = useState(false);
+
   // Tutorial step
   const [step, setStep] = useState(STEPS.LOADING);
   const [overlayDismissed, setOverlayDismissed] = useState(false);
@@ -64,6 +80,7 @@ export default function TutorialScreen({ profile, user, onComplete }) {
   const subEverTriggeredRef = useRef(false);
 
   const lastLockedMoveRef = useRef(null);
+  const lastSubChoiceRef = useRef(null);
   const matchRef = useRef(null);
   const prevTurnRef = useRef(0);
   const revealTimerRef = useRef(null);
@@ -131,8 +148,8 @@ export default function TutorialScreen({ profile, user, onComplete }) {
               const oppId2 = freshM.player1_id === profile.id ? freshM.player2_id : freshM.player1_id;
               const { data: o2 } = await sb.from('profiles').select('*').eq('id', oppId2).single();
               if (o2) setOpp(o2);
-              const { data: d2 } = await sb.from('player_move_stacks').select('technique_id, tier, equipped_variant').eq('profile_id', profile.id);
-              if (d2) { setDeck(d2); }
+              // Use hardcoded tutorial deck — all drilled
+              setDeck(TUTORIAL_DECK.map(id => ({ technique_id: id, tier: 'drilled', equipped_variant: null })));
               setStep(STEPS.T1_STANCE_INTRO);
               console.log('[TUTORIAL] initial step:', STEPS.T1_STANCE_INTRO, 'turn:', freshM.current_turn);
               return;
@@ -147,14 +164,11 @@ export default function TutorialScreen({ profile, user, onComplete }) {
         const { data: o } = await sb.from('profiles').select('*').eq('id', oppId).single();
         if (o) setOpp(o);
 
-        // Load deck
-        const { data: d } = await sb.from('player_move_stacks').select('technique_id, tier, equipped_variant').eq('profile_id', profile.id);
-        if (d) {
-          setDeck(d);
-          // Auto-drill first 3 moves
-          const drillIds = d.slice(0, 3).map(r => r.technique_id);
-          await sb.rpc('set_drilled_moves', { p_match_id: mId, p_moves: drillIds });
-        }
+        // Use hardcoded tutorial deck — all drilled
+        const tutDeck = TUTORIAL_DECK.map(id => ({ technique_id: id, tier: 'drilled', equipped_variant: null }));
+        setDeck(tutDeck);
+        // Set all tutorial moves as drilled in the match
+        await sb.rpc('set_drilled_moves', { p_match_id: mId, p_moves: TUTORIAL_DECK });
 
         // Load turns
         const { data: t } = await sb.from('match_turns').select('*').eq('match_id', mId).order('turn_number');
@@ -178,13 +192,42 @@ export default function TutorialScreen({ profile, user, onComplete }) {
     if (t) { setTurnHistory(t); if (t.length > 0) setLastTurn(t[t.length - 1]); }
 
     if (m.current_turn > prevTurnRef.current && t && t.length > 0) {
-      triggerReveal(t[t.length - 1]);
+      triggerReveal(t[t.length - 1], m);
       prevTurnRef.current = m.current_turn;
     }
 
+    // Detect sub round advancement — show both choices
+    const prev = matchRef.current;
+    if (prev && m.sub_minigame_active && prev.sub_phase !== undefined && m.sub_phase > prev.sub_phase) {
+      const isAtt = m.sub_attacker_id === profile.id;
+      const myC = isAtt ? prev.sub_attacker_choice : prev.sub_defender_choice;
+      const oppC = isAtt ? prev.sub_defender_choice : prev.sub_attacker_choice;
+      if (myC || oppC) {
+        console.log('[SUB]', { sub_phase: m.sub_phase, tighten: m.sub_tighten_turns, active: m.sub_minigame_active, round: m.sub_phase, myChoice: myC, oppChoice: oppC });
+        setSubReveal({ myChoice: myC, oppChoice: oppC, isAttacker: isAtt });
+        setTimeout(() => setSubReveal(null), 1500);
+      }
+    }
+    if (prev && prev.sub_minigame_active && !m.sub_minigame_active) {
+      const isAtt = prev.sub_attacker_id === profile.id;
+      const myC = (isAtt ? prev.sub_attacker_choice : prev.sub_defender_choice) || lastSubChoiceRef.current;
+      const oppC = isAtt ? prev.sub_defender_choice : prev.sub_attacker_choice;
+      console.log('[SUB END]', { myChoice: myC, oppChoice: oppC, isAttacker: isAtt });
+      if (myC || oppC) {
+        setSubReveal({ myChoice: myC, oppChoice: oppC, isAttacker: isAtt });
+        setTimeout(() => setSubReveal(null), 2000);
+      }
+      // Show ESCAPED overlay if sub ended without a submission finish
+      const subFinished = m.status === 'finished' && (m.win_method === 'submission' || m.result_method === 'submission');
+      if (!subFinished) {
+        setSubEscaped(true);
+        setTimeout(() => setSubEscaped(false), 1500);
+      }
+      lastSubChoiceRef.current = null;
+    }
+
     setMatch(m);
-    setSel(null); setSelectedStance(null);
-    setNoMovesConfirmed(false); setSurviveResult(null); setCaughtBySub(false);
+    setSel(null); setSelectedStance(null); setSubSel(null);
 
     // Advance tutorial step based on turn
     const mPhase = m.turn_phase || 'stance';
@@ -204,9 +247,26 @@ export default function TutorialScreen({ profile, user, onComplete }) {
       // Only end if we've actually played some turns (prevent stale match skip)
       if (m.current_turn > 1 || (t && t.length > 0)) {
         endedRef.current = true;
-        localStorage.setItem('openmat_tutorial_done', 'true');
-        setStep(STEPS.FINISH);
-        console.log('[TUTORIAL] match finished — setting FINISH step, turn:', m.current_turn);
+        const winMethod = m.win_method || m.result_method || m.method || m.finish_method || m.result || '';
+        console.log('[MATCH END CHECK]', { status: m.status, winner: m.winner_id, win_method: m.win_method, result_method: m.result_method, method: m.method, finish_method: m.finish_method, result: m.result, sub_technique_id: m.sub_technique_id });
+        // Show TAP overlay for submission finishes before FINISH screen
+        if (winMethod === 'submission' || m.sub_technique_id) {
+          const iWon = m.winner_id === profile.id;
+          const subTech = m.sub_technique_id ? G.techniques[m.sub_technique_id] : null;
+          setTapOverlay({
+            won: iWon,
+            subName: subTech?.name || 'Submission',
+            winnerName: iWon ? (profile.display_name || 'You') : 'Coach',
+          });
+          setTimeout(() => {
+            setTapOverlay(null);
+            localStorage.setItem('openmat_tutorial_done', 'true');
+            setStep(STEPS.FINISH);
+          }, 2500);
+        } else {
+          localStorage.setItem('openmat_tutorial_done', 'true');
+          setStep(STEPS.FINISH);
+        }
       } else {
         console.warn('[TUTORIAL] ignoring finished status — no turns played yet (stale match?)');
       }
@@ -222,13 +282,14 @@ export default function TutorialScreen({ profile, user, onComplete }) {
 
     const poll = setInterval(async () => {
       if (!matchRef.current) return;
-      const { data: m } = await sb.from('matches').select('current_turn, turn_phase, status, player1_move_locked, player2_move_locked, player1_stance_locked, player2_stance_locked, sub_minigame_active').eq('id', matchId).single();
+      const { data: m } = await sb.from('matches').select('current_turn, turn_phase, status, player1_move_locked, player2_move_locked, player1_stance_locked, player2_stance_locked, sub_minigame_active, sub_phase, sub_tighten_turns, sub_attacker_locked, sub_defender_locked').eq('id', matchId).single();
       if (!m) return;
       const prev = matchRef.current;
       if (m.current_turn !== prev.current_turn || m.turn_phase !== prev.turn_phase || m.status !== prev.status ||
           m.player1_move_locked !== prev.player1_move_locked || m.player2_move_locked !== prev.player2_move_locked ||
           m.player1_stance_locked !== prev.player1_stance_locked || m.player2_stance_locked !== prev.player2_stance_locked ||
-          m.sub_minigame_active !== prev.sub_minigame_active) {
+          m.sub_minigame_active !== prev.sub_minigame_active || m.sub_phase !== prev.sub_phase ||
+          m.sub_tighten_turns !== prev.sub_tighten_turns || m.sub_attacker_locked !== prev.sub_attacker_locked || m.sub_defender_locked !== prev.sub_defender_locked) {
         refreshMatch();
       }
     }, 2000);
@@ -243,19 +304,36 @@ export default function TutorialScreen({ profile, user, onComplete }) {
     return m ? m[1].trim() : null;
   }
 
-  function triggerReveal(turn) {
-    const myMove = lastLockedMoveRef.current || { name: 'Your Move', type: 'unknown' };
+  function triggerReveal(turn, freshMatch) {
+    const m = freshMatch || matchRef.current;
+    const isP1 = m?.player1_id === profile.id;
     const variantName = parseVariant(turn.description);
-    const cleanDesc = turn.description ? turn.description.replace(/\s*\[VARIANT:\s*.+?\]/, '').trim() : 'Position holds';
-    // Extract coach's move from turn data, with fallback to match object
-    const oppTechId = amP1
-      ? (turn.player2_technique_id || matchRef.current?.player2_move)
-      : (turn.player1_technique_id || matchRef.current?.player1_move);
-    const oppTech = oppTechId ? G.techniques[oppTechId] : null;
+
+    // Use match fields OR match_turns fields for move IDs (server may clear match fields after resolve)
+    const myMoveId = (isP1 ? m?.player1_move : m?.player2_move) || (isP1 ? turn.player1_technique_id : turn.player2_technique_id) || (isP1 ? turn.player1_move : turn.player2_move);
+    const oppMoveId = (isP1 ? m?.player2_move : m?.player1_move) || (isP1 ? turn.player2_technique_id : turn.player1_technique_id) || (isP1 ? turn.player2_move : turn.player1_move);
+    const myTech = myMoveId ? G.techniques[myMoveId] : null;
+    const oppTech = oppMoveId ? G.techniques[oppMoveId] : null;
+    const fallback = lastLockedMoveRef.current || { name: 'Your Move', type: 'unknown' };
+    const myMoveName = myTech?.name || fallback.name;
+    const myMoveType = myTech?.type || fallback.type;
     const oppMoveName = oppTech?.name || 'Defended';
     const oppMoveType = oppTech?.type || 'unknown';
-    console.log('[TUTORIAL] reveal - player move:', myMove.name, 'coach move:', oppMoveName, 'oppTechId:', oppTechId);
-    setRevealData({ description: cleanDesc, result: turn.result, turn: turn.turn_number, myMoveName: myMove.name, myMoveType: myMove.type, variantName, oppMoveName, oppMoveType });
+
+    // Build better description
+    let cleanDesc = turn.description ? turn.description.replace(/\s*\[VARIANT:\s*.+?\]/, '').trim() : 'Position holds';
+    if (cleanDesc.toLowerCase().includes('escaped') && oppTech && oppTech.type !== 'escape') {
+      if (oppTech && myTech) cleanDesc = `${myMoveName} countered by ${oppMoveName}!`;
+    }
+    if (!cleanDesc || cleanDesc === 'Position holds') {
+      if (myTech && turn.result === 'sweep') cleanDesc = `${myMoveName} lands!`;
+      else if (myTech && turn.result === 'submission_win') cleanDesc = `${myMoveName} locked in!`;
+      else if (oppTech && myTech) cleanDesc = `${myMoveName} vs ${oppMoveName}`;
+    }
+
+    console.log('[REVEAL]', { isPlayer1: isP1, myMoveId, oppMoveId, myMoveName, oppMoveName, description: cleanDesc });
+    console.log('[REVEAL CARD]', { opponentStance: isP1 ? m?.player2_stance : m?.player1_stance, opponentMove: oppMoveId, oppMoveName, oppMoveType });
+    setRevealData({ description: cleanDesc, result: turn.result, turn: turn.turn_number, myMoveName, myMoveType, variantName: variantName || fallback.variantName, oppMoveName, oppMoveType });
     setYourFlipped(false); setOppFlipped(false); setShowResult(false);
     setShowReveal(true);
     setTimeout(() => setYourFlipped(true), 400);
@@ -278,34 +356,27 @@ export default function TutorialScreen({ profile, user, onComplete }) {
   const deckTiers = {};
   deck.forEach(d => { deckTiers[d.technique_id] = d.tier || 'trained'; });
 
+  const myDrilled = amP1 ? (match?.player1_drilled_moves || []) : (match?.player2_drilled_moves || []);
+
   useEffect(() => {
     if (myPos && deck.length > 0) {
-      let m = getMoves(myPos, profile.belt, deckIds, false, profile.archetype);
+      let m = drawHand(myPos, profile.belt, deckIds, deckTiers, false, profile.archetype, myDrilled);
+      console.log('[HAND FINAL]', { position: myPos, stance: myStanceVal, movesBeforeRender: m.length, deckSize: deckIds.length, belt: profile.belt });
       if (m.length === 0) {
         for (const dp of ['defending_clinch', 'defending_passing', 'defending_leg_entanglement', 'defending_back', 'defending_mount']) {
-          const defMoves = getMoves(dp, profile.belt, deckIds, false, profile.archetype);
+          const defMoves = drawHand(dp, profile.belt, deckIds, deckTiers, false, profile.archetype, myDrilled);
           if (defMoves.length > 0) { m = defMoves; break; }
         }
       }
       setMoves(m);
     }
-  }, [myPos, deck]);
+  }, [myPos, deck, match?.current_turn]);
 
-  useEffect(() => {
-    if (phase === 'move' && !myLocked && moves.length === 0 && myPos && match?.status !== 'finished') {
-      (async () => {
-        const { data } = await sb.rpc('has_moves_from_position', { p_profile_id: profile.id, p_position: myPos });
-        setNoMovesConfirmed(data === false);
-      })();
-    } else {
-      setNoMovesConfirmed(false);
-    }
-  }, [phase, myLocked, moves.length, myPos, match?.status]);
+  // Three hand states: normal, low GP + survive, zero moves + survive/spaz
+  const inMovePhase = phase === 'move' && !myLocked && deck.length > 0 && myPos && !match?.sub_minigame_active && match?.status !== 'finished';
+  const zeroMoves = inMovePhase && moves.length === 0;
+  const showSurviveExtra = inMovePhase && moves.length > 0 && myGp < 3;
 
-  const counters = Object.values(G.counters).filter(c => {
-    const cPos = c.from_position || c.position || c.applicable_position;
-    return cPos && cPos === myPos;
-  });
 
   // ── ACTIONS ─────────────────────────────────────────────
   async function lockStance(stance) {
@@ -325,13 +396,48 @@ export default function TutorialScreen({ profile, user, onComplete }) {
 
   async function lockMove() {
     if (!sel || busy) return; setBusy(true);
-    const allM = [...moves, ...counters.map(c => ({ ...c, type: 'counter' }))];
+
+    // Handle universal moves (survive / spaz)
+    if (sel.is_universal) {
+      const uMove = universalMoves.find(u => u.id === sel.id);
+      lastLockedMoveRef.current = { name: uMove?.name || sel.id, type: 'universal', variantName: null };
+      console.log('[UNIVERSAL]', sel.id, '— submitting (tutorial)');
+
+      if (sel.id === 'survive') {
+        const { error } = await sb.rpc('resolve_survive', { p_match_id: matchId, p_player_id: profile.id });
+        if (error) dbg('Survive error: ' + error.message, 'err');
+      } else if (sel.id === 'spaz') {
+        const { error } = await sb.rpc('resolve_spaz', { p_match_id: matchId, p_player_id: profile.id });
+        if (error) dbg('Spaz error: ' + error.message, 'err');
+      }
+
+      // Always refresh after universal move RPC to pick up state changes
+      await refreshMatch();
+
+      // Bot response
+      const m = matchRef.current;
+      const botDrills = m?.player1_id === COACH_UUID ? (m?.player1_drilled_moves || []) : (m?.player2_drilled_moves || []);
+      const botPos = m?.player1_id === COACH_UUID ? m?.player1_position : m?.player2_position;
+      const { data: botHand } = await sb.rpc('draw_hand', {
+        p_profile_id: COACH_UUID,
+        p_position: botPos || m?.current_position,
+        p_archetype: 'wrestler',
+        p_drilled_moves: botDrills,
+      });
+      await BotEngine.respondToMove(m, COACH_UUID, 'wrestler', botHand, botDrills, myStanceVal, 'easy');
+      setTimeout(() => refreshMatch(), 500);
+      setBusy(false);
+      return;
+    }
+
+    // Normal move
+    const allM = [...moves];
     const played = allM.find(m => m.id === sel.id);
     const variant = variantMap[sel.id];
     lastLockedMoveRef.current = played
-      ? { name: played.name, type: played.type || 'counter', variantName: variant?.variant_name || null }
+      ? { name: played.name, type: played.type || 'unknown', variantName: variant?.variant_name || null }
       : { name: '???', type: 'unknown', variantName: null };
-    const { error } = await sb.rpc('submit_move', { p_match_id: matchId, p_technique_id: sel.id, p_is_counter: sel.isCounter || false, p_is_bait: false, p_feint_move: null });
+    const { error } = await sb.rpc('submit_move', { p_match_id: matchId, p_technique_id: sel.id, p_is_counter: false, p_is_bait: false, p_feint_move: null });
     if (error) dbg('Move error: ' + error.message, 'err');
     if (!error) {
       const m = matchRef.current;
@@ -349,44 +455,10 @@ export default function TutorialScreen({ profile, user, onComplete }) {
     setBusy(false);
   }
 
-  async function handleSurvive() {
-    if (surviveBusy) return;
-    setSurviveBusy(true);
-    // Player survive first
-    const { data, error } = await sb.rpc('resolve_survive', { p_match_id: matchId, p_player_id: profile.id });
-    if (error) dbg('Survive error: ' + error.message, 'err');
-    const result = Array.isArray(data) ? data[0] : data;
-    setSurviveResult(result || { success: false, message: 'Position held.' });
-
-    const m = matchRef.current;
-    const botDrills = m?.player1_id === COACH_UUID ? (m?.player1_drilled_moves || []) : (m?.player2_drilled_moves || []);
-    const botPos = m?.player1_id === COACH_UUID ? (m?.player1_position || m?.current_position) : (m?.player2_position || m?.current_position);
-    const { data: botHand } = await sb.rpc('draw_hand', {
-      p_profile_id: COACH_UUID,
-      p_position: botPos || m?.current_position,
-      p_archetype: 'wrestler',
-      p_drilled_moves: botDrills,
-    });
-    let botHasSub = false;
-    if (botHand && botHand.length > 0) {
-      const { data: techs } = await sb.from('techniques').select('id, type').in('id', botHand);
-      botHasSub = techs?.some(t => t.type === 'submission');
-    }
-    if (botHasSub) {
-      setCaughtBySub(true);
-      setSurviveBusy(false);
-      await BotEngine.respondToMove(m, COACH_UUID, 'wrestler', botHand, botDrills, myStanceVal, 'easy');
-      setTimeout(() => refreshMatch(), 500);
-      return;
-    }
-    await BotEngine.respondToMove(m, COACH_UUID, 'wrestler', botHand, botDrills, myStanceVal, 'easy');
-    setTimeout(() => refreshMatch(), 500);
-    setSurviveBusy(false);
-  }
-
   async function lockSubChoice() {
     if (!subSel || busy) return;
     setBusy(true);
+    lastSubChoiceRef.current = subSel;
     const { error } = await sb.rpc('submit_sub_choice', { p_match_id: matchId, p_choice: subSel });
     if (error) {
       dbg('Sub err: ' + error.message, 'err');
@@ -394,7 +466,8 @@ export default function TutorialScreen({ profile, user, onComplete }) {
       setSubSel(null);
       if (match?.sub_minigame_active) {
         const botIsAttacker = match.sub_attacker_id !== profile.id;
-        BotEngine.respondToSubMinigame(match, COACH_UUID, botIsAttacker, 'easy');
+        await BotEngine.respondToSubMinigame(match, COACH_UUID, botIsAttacker, 'easy');
+        setTimeout(() => refreshMatch(), 500);
       }
     }
     setBusy(false);
@@ -597,37 +670,45 @@ export default function TutorialScreen({ profile, user, onComplete }) {
               ))}
             </div>
 
-            {/* Survive UI */}
-            {noMovesConfirmed && !caughtBySub && (
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 24px', gap: 14 }}>
-                <StanceIcon stance="defend" size={48} />
-                <div style={{ ...F.display, fontSize: 22, color: T.text }}>No Moves Available</div>
-                {surviveResult ? (
-                  <div style={{ width: '100%', padding: 14, borderRadius: 10, border: `1px solid ${surviveResult.success ? T.green + '50' : T.red + '50'}`, background: surviveResult.success ? T.green + '0A' : T.red + '0A', textAlign: 'center' }}>
-                    <div style={{ ...F.display, fontSize: 20, color: surviveResult.success ? T.green : T.red }}>{surviveResult.success ? 'SURVIVED' : 'HELD DOWN'}</div>
-                    <div style={{ ...F.mono, fontSize: 10, color: T.text }}>{surviveResult.message || ''}</div>
-                  </div>
-                ) : (
-                  <Btn onClick={handleSurvive} disabled={surviveBusy} style={{ width: '100%' }}>
-                    {surviveBusy ? <Spinner /> : 'Survive'}
-                  </Btn>
-                )}
+            {/* State 3: Zero moves — Survive + Spaz desperation */}
+            {zeroMoves && (
+              <div style={{ flex: 1, overflowY: 'auto', padding: '6px 18px 0', minHeight: 0 }}>
+                <div style={{ textAlign: 'center', marginBottom: 12 }}>
+                  <div style={{ ...F.display, fontSize: 20, color: T.text }}>No Moves Available</div>
+                  <div style={{ ...F.mono, fontSize: 10, color: T.dim, marginTop: 4 }}>Choose a last-resort option</div>
+                </div>
+                {universalMoves.map(u => {
+                  const isSurvive = u.id === 'survive';
+                  const canAfford = myGp >= u.gp_cost;
+                  const isSel = sel?.id === u.id;
+                  const borderColor = isSurvive ? '#457B9D' : '#E63946';
+                  return (
+                    <div key={u.id} onClick={() => canAfford && setSel({ id: u.id, is_universal: true })}
+                      style={{
+                        padding: '14px 14px', borderRadius: 10, marginBottom: 8, cursor: canAfford ? 'pointer' : 'default',
+                        opacity: canAfford ? 1 : 0.35, transition: 'all 0.15s',
+                        border: `2px dashed ${isSel ? borderColor : borderColor + '60'}`,
+                        background: isSel ? borderColor + '12' : T.surface + '80',
+                      }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                        <span style={{ fontSize: 20 }}>{isSurvive ? '\u{1F6E1}' : '\u{1F4A5}'}</span>
+                        <span style={{ ...F.display, fontSize: 16, color: T.text }}>{u.name}</span>
+                        {isSel && <div style={{ width: 14, height: 14, borderRadius: '50%', background: borderColor, display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: 'auto' }}>
+                          <svg viewBox="0 0 12 12" width={7} height={7}><path d="M2 6L5 9L10 3" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                        </div>}
+                      </div>
+                      <div style={{ ...F.mono, fontSize: 10, color: T.muted, marginBottom: 4 }}>{u.description}</div>
+                      <div style={{ ...F.mono, fontSize: 9, color: isSurvive ? '#457B9D' : (canAfford ? '#E63946' : T.dim) }}>
+                        {isSurvive ? '0 GP \u2022 +1 recovery' : canAfford ? '3 GP \u2022 CHECKMATE RISK' : 'Not enough GP'}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
-            {noMovesConfirmed && caughtBySub && (
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 24px', gap: 14 }}>
-                <svg viewBox="0 0 48 48" width={48} height={48} fill="none">
-                  <circle cx="24" cy="24" r="20" stroke={T.red} strokeWidth="2" fill={T.red + '10'} />
-                  <path d="M16 16L32 32M32 16L16 32" stroke={T.red} strokeWidth="2.5" strokeLinecap="round" />
-                </svg>
-                <div style={{ ...F.display, fontSize: 26, color: T.red }}>CAUGHT!</div>
-                <div style={{ ...F.mono, fontSize: 11, color: T.muted, textAlign: 'center' }}>Coach has you in a submission!</div>
-              </div>
-            )}
-
-            {/* Hand */}
-            {!noMovesConfirmed && (
+            {/* States 1 & 2: Normal hand (+ survive at bottom when GP < 3) */}
+            {!zeroMoves && (
               <div style={{ flex: 1, overflowY: 'auto', padding: '6px 18px 0', minHeight: 0, position: 'relative' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
                   <span style={{ ...F.mono, fontSize: 9, color: T.muted, textTransform: 'uppercase' }}>Your Hand</span>
@@ -677,34 +758,38 @@ export default function TutorialScreen({ profile, user, onComplete }) {
                   );
                 })}
 
-                {counters.length > 0 && (
-                  <>
-                    <div style={{ ...F.mono, fontSize: 8, color: T.dim, textTransform: 'uppercase', margin: '8px 0 4px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <MoveIcon type="counter" size={12} /> Counters <span style={{ color: T.green }}>0GP</span>
-                    </div>
-                    {counters.map(c => {
-                      const cSel = sel?.id === c.id && sel?.isCounter;
-                      return (
-                        <div key={c.id} onClick={() => setSel({ id: c.id, isCounter: true })} style={{
-                          display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 6, marginBottom: 3, cursor: 'pointer',
-                          border: `1px solid ${cSel ? T.gray : T.border}`, background: cSel ? T.gray + '10' : T.surface,
+                {/* State 2: Survive card at bottom when GP < 3 */}
+                {showSurviveExtra && (() => {
+                  const isSel = sel?.id === 'survive' && sel?.is_universal;
+                  return (
+                    <>
+                      <div style={{ height: 1, background: T.border, margin: '10px 0 8px' }} />
+                      <div onClick={() => setSel({ id: 'survive', is_universal: true })}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 6, marginBottom: 4,
+                          cursor: 'pointer', transition: 'all 0.15s',
+                          border: `1.5px dashed ${isSel ? '#457B9D' : '#457B9D60'}`,
+                          background: isSel ? '#457B9D12' : 'transparent',
                         }}>
-                          <MoveIcon type="counter" size={14} />
-                          <span style={{ ...F.body, fontSize: 11, color: cSel ? T.text : T.muted }}>{c.name}</span>
-                          <span style={{ ...F.mono, fontSize: 9, color: T.green, marginLeft: 'auto' }}>0GP</span>
-                        </div>
-                      );
-                    })}
-                  </>
-                )}
+                        <span style={{ fontSize: 14 }}>{'\u{1F6E1}'}</span>
+                        <span style={{ ...F.body, fontSize: 11, fontWeight: 500, color: isSel ? T.text : T.muted }}>Survive</span>
+                        <span style={{ ...F.mono, fontSize: 9, color: '#457B9D', marginLeft: 'auto' }}>Recover &bull; +1 GP</span>
+                        {isSel && <div style={{ width: 12, height: 12, borderRadius: '50%', background: '#457B9D', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <svg viewBox="0 0 12 12" width={6} height={6}><path d="M2 6L5 9L10 3" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                        </div>}
+                      </div>
+                    </>
+                  );
+                })()}
+
               </div>
             )}
 
             {/* Lock button */}
-            {!noMovesConfirmed && (
+            {(
               <div style={{ flexShrink: 0, padding: '8px 18px 28px', borderTop: `1px solid ${T.border}` }}>
                 <Btn onClick={lockMove} disabled={!sel || busy}>
-                  {busy ? <Spinner /> : sel ? 'Lock In Move' : 'Select a Move'}
+                  {busy ? <Spinner /> : sel?.is_universal ? `Lock In ${sel.id === 'survive' ? 'Survive' : 'Spaz'}` : sel ? 'Lock In Move' : 'Select a Move'}
                 </Btn>
               </div>
             )}
@@ -730,8 +815,8 @@ export default function TutorialScreen({ profile, user, onComplete }) {
           const isAtt = match.sub_attacker_id === profile.id;
           const subTech = G.techniques[match.sub_technique_id];
           const myLk = isAtt ? match.sub_attacker_locked : match.sub_defender_locked;
-          const tighten = match?.sub_tighten ?? 0;
-          const subRound = match?.sub_round ?? 1;
+          const tighten = match?.sub_tighten_turns ?? 0;
+          const subRound = match?.sub_phase ?? 1;
 
           const attOpts = [
             { id: 'squeeze', label: 'Squeeze', desc: 'Commit fully', cost: 2, color: T.red },
@@ -755,16 +840,41 @@ export default function TutorialScreen({ profile, user, onComplete }) {
                 <div style={{ ...F.mono, fontSize: 11, color: T.muted, marginTop: 4 }}>{isAtt ? 'Finish it!' : 'Escape or survive!'}</div>
               </div>
 
-              {/* Tighten meter */}
+              {/* Tighten meter — animated */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 10 }}>
                 <span style={{ ...F.mono, fontSize: 8, color: T.dim, width: 50, textAlign: 'right' }}>TIGHTEN</span>
                 <div style={{ display: 'flex', gap: 3 }}>
                   {[1, 2, 3, 4, 5].map(i => (
-                    <div key={i} style={{ width: 28, height: 7, borderRadius: 3, background: i <= tighten ? T.red : T.dim + '30', transition: 'background 0.3s' }} />
+                    <div key={i} style={{
+                      width: 28, height: 7, borderRadius: 3,
+                      background: i <= tighten ? T.red : T.dim + '30',
+                      transition: 'background 0.4s, box-shadow 0.4s',
+                      boxShadow: i === tighten ? `0 0 6px ${T.red}60` : 'none',
+                      animation: i === tighten ? 'meterPulse 0.6s ease-out' : 'none',
+                    }} />
                   ))}
                 </div>
                 <span style={{ ...F.mono, fontSize: 9, color: tighten >= 4 ? T.red : T.muted, width: 30 }}>{tighten}/5</span>
               </div>
+
+              {/* Sub choice reveal */}
+              {subReveal && (
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginBottom: 12, animation: 'fadeUp 0.3s ease-out' }}>
+                  <div style={{ flex: 1, padding: '8px 10px', borderRadius: 8, textAlign: 'center',
+                    background: T.surface2, border: `1px solid ${T.border}`,
+                  }}>
+                    <div style={{ ...F.mono, fontSize: 8, color: T.muted, marginBottom: 2 }}>YOU</div>
+                    <div style={{ ...F.body, fontSize: 11, fontWeight: 600, color: T.text }}>{subReveal.myChoice?.replace('_', ' ')}</div>
+                  </div>
+                  <div style={{ ...F.mono, fontSize: 9, color: T.dim, alignSelf: 'center' }}>vs</div>
+                  <div style={{ flex: 1, padding: '8px 10px', borderRadius: 8, textAlign: 'center',
+                    background: T.surface2, border: `1px solid ${T.border}`,
+                  }}>
+                    <div style={{ ...F.mono, fontSize: 8, color: T.muted, marginBottom: 2 }}>COACH</div>
+                    <div style={{ ...F.body, fontSize: 11, fontWeight: 600, color: T.text }}>{subReveal.oppChoice?.replace('_', ' ')}</div>
+                  </div>
+                </div>
+              )}
 
               {/* Round indicators */}
               <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 14 }}>
@@ -969,11 +1079,63 @@ export default function TutorialScreen({ profile, user, onComplete }) {
         </div>
       )}
 
+      {/* ═══ TAP OVERLAY ═══ */}
+      {tapOverlay && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 100,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          background: tapOverlay.won ? '#D4603A' : '#E63946',
+          animation: 'tapShake 0.4s ease-out',
+        }}>
+          <div style={{
+            ...F.display, fontSize: 72, fontWeight: 900, color: '#fff',
+            lineHeight: 1, letterSpacing: '0.05em',
+            animation: 'tapBounce 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+            textShadow: '0 4px 20px rgba(0,0,0,0.4)',
+          }}>TAP!</div>
+          <div style={{
+            ...F.display, fontSize: 20, color: 'rgba(255,255,255,0.9)',
+            marginTop: 16, textAlign: 'center',
+          }}>{tapOverlay.subName}</div>
+          <div style={{
+            ...F.mono, fontSize: 13, color: 'rgba(255,255,255,0.7)',
+            marginTop: 12, textTransform: 'uppercase', letterSpacing: '0.1em',
+          }}>{tapOverlay.won ? 'Submission Victory!' : 'You got tapped'}</div>
+          <div style={{
+            ...F.mono, fontSize: 11, color: 'rgba(255,255,255,0.5)',
+            marginTop: 8,
+          }}>{tapOverlay.winnerName} wins</div>
+        </div>
+      )}
+
+      {/* ═══ ESCAPED OVERLAY ═══ */}
+      {subEscaped && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 99,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(0,0,0,0.7)',
+          animation: 'fadeUp 0.3s ease-out',
+          pointerEvents: 'none',
+        }}>
+          <div style={{
+            fontFamily: T.display, fontSize: 56, fontWeight: 900, color: '#2A9D8F',
+            letterSpacing: '0.06em', lineHeight: 1,
+            animation: 'escapeBurst 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+            textShadow: '0 0 30px #2A9D8F60, 0 4px 20px rgba(0,0,0,0.4)',
+          }}>ESCAPED!</div>
+        </div>
+      )}
+
       {/* ═══ KEYFRAMES ═══ */}
       <style>{`
         @keyframes pulseOut { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(2.4); opacity: 0; } }
         @keyframes tutPulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
         @keyframes shimmer { 0%, 100% { opacity: 1; filter: brightness(1); } 50% { opacity: 0.85; filter: brightness(1.3); } }
+        @keyframes tapBounce { 0% { transform: scale(0); opacity: 0; } 50% { transform: scale(1.15); } 100% { transform: scale(1); opacity: 1; } }
+        @keyframes tapShake { 0% { transform: translateX(0); } 15% { transform: translateX(-6px); } 30% { transform: translateX(5px); } 45% { transform: translateX(-4px); } 60% { transform: translateX(3px); } 75% { transform: translateX(-1px); } 100% { transform: translateX(0); } }
+        @keyframes fadeUp { 0% { opacity: 0; transform: translateY(8px); } 100% { opacity: 1; transform: translateY(0); } }
+        @keyframes meterPulse { 0% { transform: scaleY(1); } 30% { transform: scaleY(1.8); } 100% { transform: scaleY(1); } }
+        @keyframes escapeBurst { 0% { transform: scale(0); opacity: 0; } 50% { transform: scale(1.2); } 100% { transform: scale(1); opacity: 1; } }
       `}</style>
     </div>
   );

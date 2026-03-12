@@ -48,7 +48,12 @@ export default function App() {
           if (p.display_name && p.display_name !== emailPrefix) {
             setProfile(p);
             const tutDone = localStorage.getItem('openmat_tutorial_done') === 'true';
-            setScreen((p.matches_played ?? 0) === 0 && !tutDone ? 'tutorial' : 'main');
+            if (!p.archetype) {
+              // Has name but no archetype — route through tutorial or archetype select
+              setScreen(!tutDone ? 'tutorial' : 'archetype_select');
+            } else {
+              setScreen(!tutDone && (p.matches_played ?? 0) === 0 ? 'tutorial' : 'main');
+            }
           } else {
             setScreen('onboarding');
           }
@@ -73,10 +78,10 @@ export default function App() {
     if (p && p.display_name && p.display_name !== emailPrefix) {
       setProfile(p);
       const tutDone = localStorage.getItem('openmat_tutorial_done') === 'true';
-      if ((p.matches_played ?? 0) === 0 && !tutDone) {
-        setScreen('tutorial');
+      if (!p.archetype) {
+        setScreen(!tutDone ? 'tutorial' : 'archetype_select');
       } else {
-        setScreen('main');
+        setScreen(!tutDone && (p.matches_played ?? 0) === 0 ? 'tutorial' : 'main');
       }
     } else {
       setScreen('onboarding');
@@ -87,14 +92,31 @@ export default function App() {
     const { data: p } = await sb.from('profiles').select('*').eq('id', user.id).single();
     if (p) {
       setProfile(p);
-      const tutDone = localStorage.getItem('openmat_tutorial_done') === 'true';
-      if ((p.matches_played ?? 0) === 0 && !tutDone) {
-        dbg('New user -- routing to tutorial gate', 'ok');
-        setScreen('tutorial');
+      dbg('Profile loaded: ' + p.display_name, 'ok');
+      // New flow: Name → Tutorial → Archetype → Deck
+      // If no archetype yet, route to tutorial first (then archetype after)
+      if (!p.archetype) {
+        const tutDone = localStorage.getItem('openmat_tutorial_done') === 'true';
+        if (!tutDone) {
+          dbg('New user -- routing to tutorial gate', 'ok');
+          setScreen('tutorial');
+        } else {
+          dbg('Tutorial done but no archetype -- routing to archetype select', 'ok');
+          setScreen('archetype_select');
+        }
       } else {
         setScreen('main');
       }
-      dbg('Profile loaded: ' + p.display_name, 'ok');
+    }
+  }
+
+  async function handleArchetypeDone() {
+    const { data: p } = await sb.from('profiles').select('*').eq('id', user.id).single();
+    if (p) {
+      setProfile(p);
+      dbg('Archetype + deck done, entering main', 'ok');
+      setScreen('main');
+      setTab('lobby');
     }
   }
 
@@ -153,15 +175,18 @@ export default function App() {
   if (screen === 'loading') return <AppShell><Center><Spinner size={30} /><div style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 8 }}>Loading Open Mat...</div></Center></AppShell>;
   if (screen === 'error') return <AppShell><Center><div style={{ color: 'var(--red)', fontSize: 16, fontWeight: 700 }}>Failed to load</div><div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Check console for errors</div></Center></AppShell>;
 
-  // Auth / Onboarding
+  // Auth / Onboarding (name only → tutorial → archetype/deck)
   if (screen === 'auth') return <AppShell><AuthScreen onDone={handleAuth} /></AppShell>;
-  if (screen === 'onboarding') return <AppShell><OnboardScreen user={user} onDone={handleOnboard} /></AppShell>;
+  if (screen === 'onboarding') return <AppShell><OnboardScreen user={user} mode="name_only" onDone={handleOnboard} /></AppShell>;
 
   // Tutorial gate for brand-new users
-  if (screen === 'tutorial') return <AppShell><TutorialGate onStart={() => setScreen('tutorial_match')} onSkip={() => { localStorage.setItem('openmat_tutorial_done', 'true'); setScreen('main'); setTab('lobby'); }} /></AppShell>;
+  if (screen === 'tutorial') return <AppShell><TutorialGate onStart={() => setScreen('tutorial_match')} onSkip={() => { localStorage.setItem('openmat_tutorial_done', 'true'); setScreen('archetype_select'); }} /></AppShell>;
 
   // Tutorial match — guided match vs Coach
-  if (screen === 'tutorial_match') return <AppShell><TutorialScreen profile={profile} user={user} onComplete={() => { setScreen('main'); setTab('lobby'); }} /></AppShell>;
+  if (screen === 'tutorial_match') return <AppShell><TutorialScreen profile={profile} user={user} onComplete={() => { localStorage.setItem('openmat_tutorial_done', 'true'); setScreen('archetype_select'); }} /></AppShell>;
+
+  // Archetype + Deck selection (after tutorial)
+  if (screen === 'archetype_select') return <AppShell><OnboardScreen user={user} mode="archetype_deck" onDone={handleArchetypeDone} /></AppShell>;
 
   // NEW: Game Plan screen (between lobby and match)
   if (screen === 'gameplan' && matchId) return <AppShell><GamePlanScreen profile={profile} matchId={matchId} opponent={opponent} onReady={handleGamePlanReady} isBot={navParams?.isBot || false} botId={navParams?.botId || null} /></AppShell>;
