@@ -4,38 +4,11 @@
 // Real Supabase calls: profile upsert + seed_starter_deck
 // ═══════════════════════════════════════════════════════════
 
-import React, { useState } from 'react';
-import { T, ARCHETYPES, BeltColors, ArchColors } from '../lib/tokens';
-import { ArchIcon, MoveIcon } from '../lib/icons';
-import { Btn, Bar } from '../components/UI';
+import React, { useState, useEffect } from 'react';
+import { T, ARCHETYPES, BeltColors } from '../lib/tokens';
+import { ArchIcon } from '../lib/icons';
+import { Btn } from '../components/UI';
 import { sb } from '../lib/supabase';
-
-const STARTER_DECKS = {
-  wrestler: [
-    { id: 25, name: "Takedown Artist", desc: "Double legs, singles, top control finishes", moves: 24, subs: 4, sweeps: 0, transitions: 12, escapes: 4, takedowns: 4 },
-    { id: 26, name: "Grind & Pin", desc: "Body lock, pressure passing, mount submissions", moves: 25, subs: 5, sweeps: 1, transitions: 10, escapes: 5, takedowns: 4 },
-  ],
-  guard_puller: [
-    { id: 27, name: "Sweep Machine", desc: "Scissor sweeps, hip bumps, constant reversals", moves: 24, subs: 4, sweeps: 8, transitions: 6, escapes: 4, takedowns: 2 },
-    { id: 28, name: "Guard Assassin", desc: "Triangles, armbars, attack from your back", moves: 25, subs: 7, sweeps: 4, transitions: 6, escapes: 5, takedowns: 3 },
-  ],
-  leg_locker: [
-    { id: 29, name: "Heel Hook Hunter", desc: "Inside sankaku, ashi entries, heel hooks", moves: 24, subs: 6, sweeps: 2, transitions: 8, escapes: 5, takedowns: 3 },
-    { id: 30, name: "Ankle Lock Specialist", desc: "Straight ankle locks, toe holds, 50/50", moves: 24, subs: 5, sweeps: 3, transitions: 8, escapes: 5, takedowns: 3 },
-  ],
-  pressure_passer: [
-    { id: 31, name: "Smash Pass", desc: "Knee slice, smash pass, heavy top", moves: 25, subs: 4, sweeps: 1, transitions: 12, escapes: 4, takedowns: 4 },
-    { id: 32, name: "Knee Cutter", desc: "Knee slice, leg drag, speed passing", moves: 24, subs: 3, sweeps: 1, transitions: 13, escapes: 4, takedowns: 3 },
-  ],
-  submission_hunter: [
-    { id: 33, name: "Submission Sniper", desc: "Armbars, triangles, chain attacks", moves: 25, subs: 8, sweeps: 3, transitions: 6, escapes: 5, takedowns: 3 },
-    { id: 34, name: "Choke Artist", desc: "RNC, guillotine, darce, collar chokes", moves: 24, subs: 7, sweeps: 2, transitions: 7, escapes: 5, takedowns: 3 },
-  ],
-  scrambler: [
-    { id: 35, name: "Chaos Agent", desc: "Arm drags, back takes, constant movement", moves: 25, subs: 3, sweeps: 4, transitions: 10, escapes: 5, takedowns: 3 },
-    { id: 36, name: "Berimbolo Bandit", desc: "Inversions, berimbolo, tricky entries", moves: 24, subs: 4, sweeps: 5, transitions: 8, escapes: 4, takedowns: 3 },
-  ],
-};
 
 // Step indicator
 const Steps = ({ current, total }) => (
@@ -47,17 +20,6 @@ const Steps = ({ current, total }) => (
         transition: "all 0.3s",
       }}/>
     ))}
-  </div>
-);
-
-// Type bar for deck composition
-const TypeBar = ({ label, count, max, color }) => (
-  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-    <span style={{ fontFamily: T.mono, fontSize: 9, color: T.dim, width: 36, textAlign: "right" }}>{label}</span>
-    <div style={{ flex: 1, height: 4, background: T.surface3, borderRadius: 2, overflow: "hidden" }}>
-      <div style={{ width: `${(count / max) * 100}%`, height: "100%", background: color, borderRadius: 2 }}/>
-    </div>
-    <span style={{ fontFamily: T.mono, fontSize: 9, color: T.muted, width: 16 }}>{count}</span>
   </div>
 );
 
@@ -137,16 +99,19 @@ function BeltStep({ onNext, onBack }) {
 }
 
 // ─── Step 3: Deck picker ───
-function DeckStep({ archetype, deck, setDeck, onComplete, saving, onBack }) {
-  const decks = archetype ? STARTER_DECKS[archetype] || [] : [];
+function DeckStep({ archetype, deck, setDeck, decks, loadingDecks, onComplete, saving, onBack }) {
   const archData = ARCHETYPES.find(a => a.id === archetype);
   return (
     <div style={{ animation: "fadeUp 0.3s ease-out both" }}>
       <div style={{ fontFamily: T.display, fontSize: 28, letterSpacing: "0.06em", color: T.white, marginBottom: 4 }}>Pick Your Deck</div>
       <div style={{ fontFamily: T.mono, fontSize: 10, color: T.dim, marginBottom: 20, lineHeight: 1.6 }}>Two starter decks for {archData?.name}. You can edit your deck later.</div>
+      {loadingDecks ? (
+        <div style={{ fontFamily: T.mono, fontSize: 11, color: T.muted, textAlign: "center", padding: 40 }}>Loading decks...</div>
+      ) : (
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
         {decks.map(d => {
           const sel = deck === d.id;
+          const moveCount = d.technique_ids ? d.technique_ids.length : 0;
           return (
             <button key={d.id} onClick={() => setDeck(d.id)} style={{
               padding: "16px", textAlign: "left", background: sel ? `${archData.color}10` : T.surface,
@@ -154,24 +119,17 @@ function DeckStep({ archetype, deck, setDeck, onComplete, saving, onBack }) {
             }}>
               {sel && <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: archData.color }}/>}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <div style={{ fontFamily: T.display, fontSize: 20, letterSpacing: "0.04em", color: sel ? T.white : T.muted }}>{d.name}</div>
-                <span style={{ fontFamily: T.mono, fontSize: 10, color: T.dim }}>{d.moves} moves</span>
-              </div>
-              <div style={{ fontFamily: T.body, fontSize: 11, color: T.dim, marginBottom: 12, lineHeight: 1.4 }}>{d.desc}</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <TypeBar label="Subs" count={d.subs} max={10} color={T.red}/>
-                <TypeBar label="Sweep" count={d.sweeps} max={10} color={T.amber}/>
-                <TypeBar label="Trans" count={d.transitions} max={15} color={T.blue}/>
-                <TypeBar label="Esc" count={d.escapes} max={8} color={T.teal}/>
-                <TypeBar label="TD" count={d.takedowns} max={6} color={T.green}/>
+                <div style={{ fontFamily: T.display, fontSize: 20, letterSpacing: "0.04em", color: sel ? T.white : T.muted }}>{d.deck_name}</div>
+                <span style={{ fontFamily: T.mono, fontSize: 10, color: T.dim }}>{moveCount} moves</span>
               </div>
             </button>
           );
         })}
       </div>
+      )}
       <div style={{ display: "flex", gap: 8 }}>
         <Btn variant="ghost" onClick={onBack}>Back</Btn>
-        <div style={{ flex: 1 }}><Btn full onClick={onComplete} disabled={!deck || saving}>{saving ? "Setting up..." : "Start Rolling"}</Btn></div>
+        <div style={{ flex: 1 }}><Btn full onClick={onComplete} disabled={!deck || saving || loadingDecks}>{saving ? "Setting up..." : "Start Rolling"}</Btn></div>
       </div>
     </div>
   );
@@ -182,8 +140,31 @@ export default function OnboardScreen({ user, onDone }) {
   const [name, setName] = useState("");
   const [archetype, setArchetype] = useState(null);
   const [deck, setDeck] = useState(null);
+  const [fetchedDecks, setFetchedDecks] = useState([]);
+  const [loadingDecks, setLoadingDecks] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+
+  // Fetch starter decks from DB when archetype changes
+  useEffect(() => {
+    if (!archetype) return;
+    const dbArchetype = archetype === "submission_hunter" ? "sub_hunter" : archetype;
+    setLoadingDecks(true);
+    setDeck(null);
+    sb.from('starter_decks')
+      .select('id, archetype, deck_name, technique_ids')
+      .eq('archetype', dbArchetype)
+      .then(({ data, error: fetchErr }) => {
+        if (fetchErr) {
+          console.error('[ONBOARD] Failed to fetch starter decks:', fetchErr);
+          setFetchedDecks([]);
+        } else {
+          console.log('[ONBOARD] Fetched starter decks:', data);
+          setFetchedDecks(data || []);
+        }
+        setLoadingDecks(false);
+      });
+  }, [archetype]);
 
   const handleComplete = async () => {
     setSaving(true);
@@ -206,10 +187,11 @@ export default function OnboardScreen({ user, onDone }) {
       }
       // Seed starter deck (DB starter_decks uses "sub_hunter" not "submission_hunter")
       const rpcArchetype = archetype === "submission_hunter" ? "sub_hunter" : archetype;
+      console.log('[ONBOARD] seeding deck:', { p_profile_id: user.id, p_archetype: rpcArchetype, p_deck_id: deck });
       const { error: seedErr } = await sb.rpc("seed_starter_deck", {
         p_profile_id: user.id,
         p_archetype: rpcArchetype,
-        p_deck_id: parseInt(deck),
+        p_deck_id: deck,
       });
       if (seedErr) {
         console.error("Seed deck error:", seedErr);
@@ -232,7 +214,7 @@ export default function OnboardScreen({ user, onDone }) {
       {step === 0 && <NameStep name={name} setName={setName} onNext={() => setStep(1)} />}
       {step === 1 && <ArchetypeStep archetype={archetype} setArchetype={setArchetype} onNext={() => setStep(2)} onBack={() => setStep(0)} />}
       {step === 2 && <BeltStep onNext={() => setStep(3)} onBack={() => setStep(1)} />}
-      {step === 3 && <DeckStep archetype={archetype} deck={deck} setDeck={setDeck} onComplete={handleComplete} saving={saving} onBack={() => setStep(2)} />}
+      {step === 3 && <DeckStep archetype={archetype} deck={deck} setDeck={setDeck} decks={fetchedDecks} loadingDecks={loadingDecks} onComplete={handleComplete} saving={saving} onBack={() => setStep(2)} />}
     </div>
   );
 }
