@@ -106,3 +106,14 @@ button { -webkit-tap-highlight-color: transparent; }
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
 }
+
+@keyframes bossPulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(233,196,106,0.15), 0 0 40px rgba(230,57,70,0.06); }
+  50% { box-shadow: 0 0 30px rgba(233,196,106,0.25), 0 0 60px rgba(230,57,70,0.12); }
+}
+
+@keyframes shimmer {
+  0% { text-shadow: 0 0 4px rgba(255, 215, 0, 0.3); }
+  50% { text-shadow: 0 0 12px rgba(255, 215, 0, 0.8), 0 0 20px rgba(255, 165, 0, 0.4); }
+  100% { text-shadow: 0 0 4px rgba(255, 215, 0, 0.3); }
+}

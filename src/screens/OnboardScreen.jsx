@@ -183,12 +183,14 @@ export default function OnboardScreen({ user, onDone }) {
   const [archetype, setArchetype] = useState(null);
   const [deck, setDeck] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
 
   const handleComplete = async () => {
     setSaving(true);
+    setError(null);
     try {
       // Upsert profile
-      await sb.from("profiles").upsert({
+      const { error: upsertErr } = await sb.from("profiles").upsert({
         id: user.id,
         username: name.trim(),
         archetype,
@@ -196,22 +198,36 @@ export default function OnboardScreen({ user, onDone }) {
         elo: 1200,
         display_name: name.trim(),
       });
+      if (upsertErr) {
+        console.error("Profile upsert error:", upsertErr);
+        setError("Failed to save profile. Please try again.");
+        setSaving(false);
+        return;
+      }
       // Seed starter deck (DB starter_decks uses "sub_hunter" not "submission_hunter")
       const rpcArchetype = archetype === "submission_hunter" ? "sub_hunter" : archetype;
-      await sb.rpc("seed_starter_deck", {
+      const { error: seedErr } = await sb.rpc("seed_starter_deck", {
         p_profile_id: user.id,
         p_archetype: rpcArchetype,
         p_deck_id: deck,
       });
+      if (seedErr) {
+        console.error("Seed deck error:", seedErr);
+        setError("Failed to build starter deck. Please try again.");
+        setSaving(false);
+        return;
+      }
       onDone && onDone();
     } catch (e) {
       console.error("Onboard error:", e);
+      setError("Something went wrong. Please try again.");
     }
     setSaving(false);
   };
 
   return (
     <div style={{ padding: "24px 20px 40px", minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      {error && <div style={{ background: "#3A1215", border: `1px solid ${T.red}`, borderRadius: 8, padding: "10px 14px", marginBottom: 12, color: T.red, fontSize: 14, fontFamily: T.body }}>{error}</div>}
       <Steps current={step} total={4}/>
       {step === 0 && <NameStep name={name} setName={setName} onNext={() => setStep(1)} />}
       {step === 1 && <ArchetypeStep archetype={archetype} setArchetype={setArchetype} onNext={() => setStep(2)} onBack={() => setStep(0)} />}

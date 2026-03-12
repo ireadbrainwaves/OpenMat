@@ -33,6 +33,12 @@ const STANCE_WEIGHTS = {
   scrambler:         { attack: 0.3, defend: 0.2, setup: 0.5 },
 };
 
+// Master difficulty overrides (The Professor)
+const MASTER_STANCE_WEIGHTS = { attack: 0.7, defend: 0.0, setup: 0.3 };
+
+// Master move scoring — deterministic, no noise, submissions first
+const MASTER_TYPE_SCORES = { submission: 10, sweep: 6, takedown: 5, transition: 4, escape: 2 };
+
 // Weighted random selection
 function weightedChoice(weights) {
   const entries = Object.entries(weights);
@@ -102,10 +108,11 @@ export const BotEngine = {
   // Delay to simulate "thinking" — computed fresh each call
   get THINK_DELAY_MS() { return 800 + Math.random() * 1200; },
 
-  async respondToStance(match, botId, botArchetype) {
+  async respondToStance(match, botId, botArchetype, difficulty) {
     await new Promise(r => setTimeout(r, this.THINK_DELAY_MS));
 
-    const weights = STANCE_WEIGHTS[botArchetype] || STANCE_WEIGHTS.scrambler;
+    const isMaster = difficulty === 'master';
+    const weights = isMaster ? MASTER_STANCE_WEIGHTS : (STANCE_WEIGHTS[botArchetype] || STANCE_WEIGHTS.scrambler);
     const stance = weightedChoice(weights);
 
     try {
@@ -131,23 +138,34 @@ export const BotEngine = {
     }
   },
 
-  async respondToMove(match, botId, botArchetype, botHand, drilledMoves, opponentStance) {
+  async respondToMove(match, botId, botArchetype, botHand, drilledMoves, opponentStance, difficulty) {
     await new Promise(r => setTimeout(r, this.THINK_DELAY_MS));
 
     console.log('Bot hand debug:', { position: match.current_position, handLength: botHand?.length, botHand });
     if (!botHand || botHand.length === 0) {
-      console.log('Bot has no moves in hand — calling resolve_survive...');
+      console.log('Bot has no moves in hand — submitting survive...');
       try {
-        const { data, error } = await supabase.rpc('resolve_survive', {
+        // Try resolve_survive first
+        const { error: surviveErr } = await supabase.rpc('resolve_survive', {
           p_match_id: match.id,
           p_player_id: botId,
         });
-        if (error) console.error('Bot resolve_survive error:', error);
-        else console.log('Bot resolve_survive result:', data);
-        return null;
+        if (surviveErr) {
+          console.warn('Bot resolve_survive failed, trying bot_submit_move fallback:', surviveErr.message);
+          const { error: moveErr } = await supabase.rpc('bot_submit_move', {
+            p_match_id: match.id,
+            p_player_id: botId,
+            p_technique_id: 'survive',
+            p_is_counter: false,
+          });
+          if (moveErr) console.error('Bot survive fallback also failed:', moveErr.message);
+        }
+        console.log('Bot survive complete — turn should advance via server');
+        // Return 'survived' sentinel so callers know not to expect a move submission
+        return 'survived';
       } catch (err) {
-        console.error('Bot resolve_survive failed:', err);
-        return null;
+        console.error('Bot survive failed entirely:', err);
+        return 'survived';
       }
     }
 
@@ -161,13 +179,22 @@ export const BotEngine = {
     const isP1 = match.player1_id === botId;
     const botGP = isP1 ? match.player1_gp : match.player2_gp;
 
+    const isMaster = difficulty === 'master';
     let chosen;
     if (techniques && techniques.length > 0) {
-      // Score each move using archetype-aware scoring
-      const scored = techniques.map(t => ({
-        ...t,
-        score: scoreMoveForArchetype(t, botArchetype, match.current_position, botGP),
-      }));
+      let scored;
+      if (isMaster) {
+        // Master: deterministic scoring, no noise — always picks best move
+        scored = techniques.map(t => ({
+          ...t,
+          score: (MASTER_TYPE_SCORES[t.type] || 0) + (DOMINANT_POSITIONS.has(t.to_position) ? 3 : 0),
+        }));
+      } else {
+        scored = techniques.map(t => ({
+          ...t,
+          score: scoreMoveForArchetype(t, botArchetype, match.current_position, botGP),
+        }));
+      }
       scored.sort((a, b) => b.score - a.score);
       chosen = scored[0].id;
       console.log('Bot scored moves:', scored.map(s => `${s.id}(${s.type}):${s.score.toFixed(1)}`));
@@ -196,12 +223,16 @@ export const BotEngine = {
     }
   },
 
-  async respondToSubMinigame(match, botId, isAttacker) {
+  async respondToSubMinigame(match, botId, isAttacker, difficulty) {
     await new Promise(r => setTimeout(r, 2000 + Math.random() * 1000));
 
+    const isMaster = difficulty === 'master';
     // Bot sub choices — IDs must match the RPC/UI option IDs
     let choice;
-    if (isAttacker) {
+    if (isMaster) {
+      // Master: always optimal — squeeze as attacker, technical_escape as defender
+      choice = isAttacker ? 'squeeze' : 'technical_escape';
+    } else if (isAttacker) {
       // Attackers mostly squeeze, sometimes adjust
       const r = Math.random();
       choice = r < 0.55 ? 'squeeze' : r < 0.85 ? 'adjust' : 'transition_sub';

@@ -12,6 +12,8 @@ import MatchScreen from './screens/MatchScreen';
 import PostMatchScreen from './screens/PostMatchScreen';
 import DeckScreen from './screens/DeckScreen';
 import ProfileScreen from './screens/ProfileScreen';
+import TutorialGate from './screens/TutorialGate';
+import TutorialScreen from './screens/TutorialScreen';
 
 export default function App() {
   // Prototype mode — bypass everything
@@ -44,7 +46,9 @@ export default function App() {
         if (p) {
           const emailPrefix = session.user.email?.split('@')[0] || '';
           if (p.display_name && p.display_name !== emailPrefix) {
-            setProfile(p); setScreen('main');
+            setProfile(p);
+            const tutDone = localStorage.getItem('openmat_tutorial_done') === 'true';
+            setScreen((p.matches_played ?? 0) === 0 && !tutDone ? 'tutorial' : 'main');
           } else {
             setScreen('onboarding');
           }
@@ -67,7 +71,13 @@ export default function App() {
     const { data: p } = await sb.from('profiles').select('*').eq('id', u.id).single();
     const emailPrefix = u.email?.split('@')[0] || '';
     if (p && p.display_name && p.display_name !== emailPrefix) {
-      setProfile(p); setScreen('main');
+      setProfile(p);
+      const tutDone = localStorage.getItem('openmat_tutorial_done') === 'true';
+      if ((p.matches_played ?? 0) === 0 && !tutDone) {
+        setScreen('tutorial');
+      } else {
+        setScreen('main');
+      }
     } else {
       setScreen('onboarding');
     }
@@ -75,7 +85,17 @@ export default function App() {
 
   async function handleOnboard() {
     const { data: p } = await sb.from('profiles').select('*').eq('id', user.id).single();
-    if (p) { setProfile(p); setScreen('main'); dbg('Profile loaded: ' + p.display_name, 'ok'); }
+    if (p) {
+      setProfile(p);
+      const tutDone = localStorage.getItem('openmat_tutorial_done') === 'true';
+      if ((p.matches_played ?? 0) === 0 && !tutDone) {
+        dbg('New user -- routing to tutorial gate', 'ok');
+        setScreen('tutorial');
+      } else {
+        setScreen('main');
+      }
+      dbg('Profile loaded: ' + p.display_name, 'ok');
+    }
   }
 
   // NEW FLOW: Lobby → GamePlan → Match → PostMatch
@@ -136,6 +156,12 @@ export default function App() {
   // Auth / Onboarding
   if (screen === 'auth') return <AppShell><AuthScreen onDone={handleAuth} /></AppShell>;
   if (screen === 'onboarding') return <AppShell><OnboardScreen user={user} onDone={handleOnboard} /></AppShell>;
+
+  // Tutorial gate for brand-new users
+  if (screen === 'tutorial') return <AppShell><TutorialGate onStart={() => setScreen('tutorial_match')} onSkip={() => { localStorage.setItem('openmat_tutorial_done', 'true'); setScreen('main'); setTab('lobby'); }} /></AppShell>;
+
+  // Tutorial match — guided match vs Coach
+  if (screen === 'tutorial_match') return <AppShell><TutorialScreen profile={profile} user={user} onComplete={() => { setScreen('main'); setTab('lobby'); }} /></AppShell>;
 
   // NEW: Game Plan screen (between lobby and match)
   if (screen === 'gameplan' && matchId) return <AppShell><GamePlanScreen profile={profile} matchId={matchId} opponent={opponent} onReady={handleGamePlanReady} isBot={navParams?.isBot || false} botId={navParams?.botId || null} /></AppShell>;
