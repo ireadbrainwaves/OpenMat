@@ -209,7 +209,7 @@ export default function OnboardScreen({ user, onDone }) {
       const { error: seedErr } = await sb.rpc("seed_starter_deck", {
         p_profile_id: user.id,
         p_archetype: rpcArchetype,
-        p_deck_id: deck,
+        p_deck_id: parseInt(deck),
       });
       if (seedErr) {
         console.error("Seed deck error:", seedErr);
