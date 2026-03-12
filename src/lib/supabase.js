@@ -79,13 +79,8 @@ export function getMoves(posId, belt, deck, overtime, archetype) {
     if ((beltOrder[t.belt_unlock] || 1) > lvl) return false;
     if (!deck.includes(t.id)) return false;
     if (overtime && t.type !== 'submission') return false;
-    if (status === 'defending' || status === 'disadvantaged') {
-      if (t.type !== 'escape') return false;
-    }
-    // Dominant positions have no reason to escape
-    if (status === 'dominant' || G.positions[posId]?.is_dominant) {
-      if (t.type === 'escape') return false;
-    }
+    // Position-based only: from_position match is handled by techFrom[posId].
+    // Status (defending/dominant) does NOT restrict which moves you can play.
     return true;
   });
 }

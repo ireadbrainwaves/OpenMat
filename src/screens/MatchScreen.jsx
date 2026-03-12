@@ -52,6 +52,9 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
   // Variant data: technique_id -> { variant_id, variant_name }
   const [variantMap, setVariantMap] = useState({});
 
+  // TAP overlay
+  const [tapOverlay, setTapOverlay] = useState(null); // { won: bool, subName: string, winnerName: string }
+
   // Track what player locked in for the flip card display
   const lastLockedMoveRef = useRef(null);
 
@@ -108,11 +111,22 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
     setSel(null); setSelectedStance(null);
     setNoMovesConfirmed(false); setSurviveResult(null); setCaughtBySub(false);
 
-    // Handle match end
+    // Handle match end — check for submission finish to show TAP overlay
     if (m.status === 'finished' && !endedRef.current) {
       endedRef.current = true;
       dbg('Match finished!', 'ok');
-      setTimeout(() => onEnd(m), 2500);
+      if (m.win_method === 'submission' || m.result_method === 'submission') {
+        const iWon = m.winner_id === profile.id;
+        const subTech = m.sub_technique_id ? G.techniques[m.sub_technique_id] : null;
+        setTapOverlay({
+          won: iWon,
+          subName: subTech?.name || 'Submission',
+          winnerName: iWon ? (profile.display_name || 'You') : (opp?.display_name || 'Opponent'),
+        });
+        setTimeout(() => { setTapOverlay(null); onEnd(m); }, 2500);
+      } else {
+        setTimeout(() => onEnd(m), 2500);
+      }
     }
   }, [matchId]);
 
@@ -184,11 +198,14 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
     const myMove = lastLockedMoveRef.current || { name: 'Your Move', type: 'unknown' };
     const variantName = parseVariant(turn.description);
     const cleanDesc = turn.description ? turn.description.replace(/\s*\[VARIANT:\s*.+?\]/, '').trim() : 'Position holds';
-    // Extract opponent move from turn data
-    const oppTechId = amP1 ? turn.player2_technique_id : turn.player1_technique_id;
+    // Extract opponent move from turn data, with fallback to match object
+    const oppTechId = amP1
+      ? (turn.player2_technique_id || matchRef.current?.player2_move)
+      : (turn.player1_technique_id || matchRef.current?.player1_move);
     const oppTech = oppTechId ? G.techniques[oppTechId] : null;
     const oppMoveName = oppTech?.name || 'Defended';
     const oppMoveType = oppTech?.type || 'unknown';
+    console.log('[REVEAL]', { turn: turn.turn_number, oppTechId, oppTech: oppTech?.name, myMove: myMove.name, turnKeys: Object.keys(turn) });
     setRevealData({ description: cleanDesc, result: turn.result, turn: turn.turn_number, myMoveName: myMove.name, myMoveType: myMove.type, variantName, oppMoveName, oppMoveType });
     setYourFlipped(false); setOppFlipped(false); setShowResult(false);
     setShowReveal(true);
@@ -571,6 +588,7 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
                   <span style={{ ...F.mono, fontSize: 9, color: T.dim }}>{moves.length} moves</span>
                 </div>
 
+                {console.log('[HAND DEBUG]', { stance: myStanceVal, movesCount: moves.length, moves: moves.map(m => m.name + '(' + m.type + ')') })}
                 {moves.map(m => {
                   const tier = deckTiers[m.id] || 'trained';
                   const effGP = getEffGP(m);
@@ -901,12 +919,43 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
         </div>
       )}
 
+      {/* ═══ TAP OVERLAY ═══ */}
+      {tapOverlay && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 100,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          background: tapOverlay.won ? '#D4603A' : '#E63946',
+          animation: 'tapShake 0.4s ease-out',
+        }}>
+          <div style={{
+            ...F.display, fontSize: 72, fontWeight: 900, color: '#fff',
+            lineHeight: 1, letterSpacing: '0.05em',
+            animation: 'tapBounce 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+            textShadow: '0 4px 20px rgba(0,0,0,0.4)',
+          }}>TAP!</div>
+          <div style={{
+            ...F.display, fontSize: 20, color: 'rgba(255,255,255,0.9)',
+            marginTop: 16, textAlign: 'center',
+          }}>{tapOverlay.subName}</div>
+          <div style={{
+            ...F.mono, fontSize: 13, color: 'rgba(255,255,255,0.7)',
+            marginTop: 12, textTransform: 'uppercase', letterSpacing: '0.1em',
+          }}>{tapOverlay.won ? 'Submission Victory!' : 'You got tapped'}</div>
+          <div style={{
+            ...F.mono, fontSize: 11, color: 'rgba(255,255,255,0.5)',
+            marginTop: 8,
+          }}>{tapOverlay.winnerName} wins</div>
+        </div>
+      )}
+
       {/* ═══ KEYFRAMES ═══ */}
       <style>{`
         @keyframes pulseOut { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(2.4); opacity: 0; } }
         @keyframes blink { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
         @keyframes pulseGlow { 0%, 100% { box-shadow: 0 0 0 0 ${T.red}40; } 50% { box-shadow: 0 0 12px 2px ${T.red}30; } }
         @keyframes shimmer { 0%, 100% { opacity: 1; filter: brightness(1); } 50% { opacity: 0.85; filter: brightness(1.3); } }
+        @keyframes tapBounce { 0% { transform: scale(0); opacity: 0; } 50% { transform: scale(1.15); } 100% { transform: scale(1); opacity: 1; } }
+        @keyframes tapShake { 0% { transform: translateX(0); } 15% { transform: translateX(-6px); } 30% { transform: translateX(5px); } 45% { transform: translateX(-4px); } 60% { transform: translateX(3px); } 75% { transform: translateX(-1px); } 100% { transform: translateX(0); } }
       `}</style>
     </div>
   );

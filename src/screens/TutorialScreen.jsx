@@ -96,6 +96,8 @@ export default function TutorialScreen({ profile, user, onComplete }) {
   // ── CREATE TUTORIAL MATCH ───────────────────────────────
   useEffect(() => {
     (async () => {
+      // Clear tutorial complete flag — user chose to play tutorial, so reset it
+      localStorage.removeItem('openmat_tutorial_done');
       dbg('Tutorial: creating match vs Coach...', 'ok');
       try {
         const { data: mId, error } = await sb.rpc('challenge_bot', {
@@ -109,6 +111,35 @@ export default function TutorialScreen({ profile, user, onComplete }) {
 
         // Load match
         const { data: m } = await sb.from('matches').select('*').eq('id', mId).single();
+        console.log('[TUTORIAL] match loaded:', { id: mId, status: m?.status, turn: m?.current_turn, phase: m?.turn_phase });
+
+        // If the RPC returned a stale/finished match, try to get a fresh one
+        if (m && m.status === 'finished') {
+          console.warn('[TUTORIAL] Got a finished match from challenge_bot — creating a new one');
+          // Force a new match by directly inserting
+          const { data: freshId, error: freshErr } = await sb.rpc('challenge_bot', {
+            p_player_id: user.id,
+            p_bot_id: COACH_UUID,
+          });
+          if (!freshErr && freshId && freshId !== mId) {
+            const { data: freshM } = await sb.from('matches').select('*').eq('id', freshId).single();
+            if (freshM && freshM.status !== 'finished') {
+              console.log('[TUTORIAL] Fresh match:', freshId);
+              setMatchId(freshId);
+              setMatch(freshM); matchRef.current = freshM; prevTurnRef.current = freshM.current_turn;
+              // Continue with fresh match for opponent/deck loading below
+              const oppId2 = freshM.player1_id === profile.id ? freshM.player2_id : freshM.player1_id;
+              const { data: o2 } = await sb.from('profiles').select('*').eq('id', oppId2).single();
+              if (o2) setOpp(o2);
+              const { data: d2 } = await sb.from('player_move_stacks').select('technique_id, tier, equipped_variant').eq('profile_id', profile.id);
+              if (d2) { setDeck(d2); }
+              setStep(STEPS.T1_STANCE_INTRO);
+              console.log('[TUTORIAL] initial step:', STEPS.T1_STANCE_INTRO, 'turn:', freshM.current_turn);
+              return;
+            }
+          }
+        }
+
         if (m) { setMatch(m); matchRef.current = m; prevTurnRef.current = m.current_turn; }
 
         // Load opponent (Coach)
@@ -130,6 +161,7 @@ export default function TutorialScreen({ profile, user, onComplete }) {
         if (t) { setTurnHistory(t); if (t.length > 0) setLastTurn(t[t.length - 1]); }
 
         setStep(STEPS.T1_STANCE_INTRO);
+        console.log('[TUTORIAL] initial step:', STEPS.T1_STANCE_INTRO, 'turn:', m?.current_turn);
       } catch (e) {
         dbg('Tutorial setup failed: ' + e.message, 'err');
       }
@@ -169,9 +201,15 @@ export default function TutorialScreen({ profile, user, onComplete }) {
     }
 
     if (m.status === 'finished' && !endedRef.current) {
-      endedRef.current = true;
-      localStorage.setItem('openmat_tutorial_done', 'true');
-      setStep(STEPS.FINISH);
+      // Only end if we've actually played some turns (prevent stale match skip)
+      if (m.current_turn > 1 || (t && t.length > 0)) {
+        endedRef.current = true;
+        localStorage.setItem('openmat_tutorial_done', 'true');
+        setStep(STEPS.FINISH);
+        console.log('[TUTORIAL] match finished — setting FINISH step, turn:', m.current_turn);
+      } else {
+        console.warn('[TUTORIAL] ignoring finished status — no turns played yet (stale match?)');
+      }
     }
   }, [matchId]);
 
@@ -209,11 +247,14 @@ export default function TutorialScreen({ profile, user, onComplete }) {
     const myMove = lastLockedMoveRef.current || { name: 'Your Move', type: 'unknown' };
     const variantName = parseVariant(turn.description);
     const cleanDesc = turn.description ? turn.description.replace(/\s*\[VARIANT:\s*.+?\]/, '').trim() : 'Position holds';
-    // Extract coach's move from turn data
-    const oppTechId = amP1 ? turn.player2_technique_id : turn.player1_technique_id;
+    // Extract coach's move from turn data, with fallback to match object
+    const oppTechId = amP1
+      ? (turn.player2_technique_id || matchRef.current?.player2_move)
+      : (turn.player1_technique_id || matchRef.current?.player1_move);
     const oppTech = oppTechId ? G.techniques[oppTechId] : null;
     const oppMoveName = oppTech?.name || 'Defended';
     const oppMoveType = oppTech?.type || 'unknown';
+    console.log('[TUTORIAL] reveal - player move:', myMove.name, 'coach move:', oppMoveName, 'oppTechId:', oppTechId);
     setRevealData({ description: cleanDesc, result: turn.result, turn: turn.turn_number, myMoveName: myMove.name, myMoveType: myMove.type, variantName, oppMoveName, oppMoveType });
     setYourFlipped(false); setOppFlipped(false); setShowResult(false);
     setShowReveal(true);
