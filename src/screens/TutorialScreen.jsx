@@ -826,7 +826,7 @@ export default function TutorialScreen({ profile, user, onComplete }) {
           const defOpts = [
             { id: 'technical_escape', label: 'Tech Escape', desc: 'Strip the grip', cost: 1, color: T.teal },
             { id: 'explode', label: 'Explode', desc: 'All-out burst', cost: 2, color: T.red },
-            { id: 'survive', label: 'Survive', desc: 'Weather the storm', cost: 1, color: T.blue },
+            { id: 'survive', label: 'Survive', desc: 'Weather the storm', cost: 0, color: T.blue },
             { id: 'sweep_scramble', label: 'Sweep', desc: 'Escape + position', cost: 2, color: T.amber },
             { id: 'reversal_sub', label: 'Reversal', desc: 'Counter-submission', cost: 3, color: T.gold },
           ];

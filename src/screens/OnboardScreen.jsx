@@ -187,13 +187,16 @@ export default function OnboardScreen({ user, onDone, mode = 'full' }) {
     setSaving(true);
     setError(null);
     try {
-      const { error: upsertErr } = await sb.from("profiles").upsert({
-        id: user.id,
-        username: name.trim(),
-        belt: "white",
-        elo: 1200,
-        display_name: name.trim(),
-      });
+      const { error: upsertErr } = await sb.from("profiles").upsert(
+        {
+          id: user.id,
+          username: name.trim(),
+          display_name: name.trim(),
+          belt: "white",
+          elo: parseInt(1200, 10),
+        },
+        { onConflict: 'id' }
+      );
       if (upsertErr) {
         console.error("Profile upsert error:", upsertErr);
         setError("Failed to save profile. Please try again.");
@@ -212,24 +215,35 @@ export default function OnboardScreen({ user, onDone, mode = 'full' }) {
     setSaving(true);
     setError(null);
     try {
-      // Upsert profile with archetype
-      const { error: upsertErr } = await sb.from("profiles").upsert({
-        id: user.id,
-        archetype,
-      });
+      // Map archetype for DB (UI "submission_hunter" → DB "sub_hunter")
+      const rpcArchetype = archetype === "submission_hunter" ? "sub_hunter" : archetype;
+
+      // Upsert profile with archetype — include all NOT NULL fields as fallback
+      // in case the auth trigger didn't fire or failed
+      const fallbackName = 'player_' + user.id.slice(0, 8);
+      const { error: upsertErr } = await sb.from("profiles").upsert(
+        {
+          id: user.id,
+          username: fallbackName,
+          display_name: fallbackName,
+          belt: "white",
+          elo: parseInt(1200, 10),
+          archetype: rpcArchetype,
+        },
+        { onConflict: 'id', ignoreDuplicates: false }
+      );
       if (upsertErr) {
         console.error("Profile upsert error:", upsertErr);
         setError("Failed to save profile. Please try again.");
         setSaving(false);
         return;
       }
-      // Seed starter deck (DB starter_decks uses "sub_hunter" not "submission_hunter")
-      const rpcArchetype = archetype === "submission_hunter" ? "sub_hunter" : archetype;
-      console.log('[ONBOARD] seeding deck:', { p_profile_id: user.id, p_archetype: rpcArchetype, p_deck_id: deck });
+      // Seed starter deck — parseInt for deck ID, p_ prefix on all params
+      console.log('[ONBOARD] seeding deck:', { p_profile_id: user.id, p_archetype: rpcArchetype, p_deck_id: parseInt(deck, 10) });
       const { error: seedErr } = await sb.rpc("seed_starter_deck", {
         p_profile_id: user.id,
         p_archetype: rpcArchetype,
-        p_deck_id: deck,
+        p_deck_id: parseInt(deck, 10),
       });
       if (seedErr) {
         console.error("Seed deck error:", seedErr);

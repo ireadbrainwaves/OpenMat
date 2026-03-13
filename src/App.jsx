@@ -2,6 +2,7 @@ import React from 'react';
 const { useState, useEffect } = React;
 import { sb, dbg, loadGraph } from './lib/supabase';
 import { AppShell, BottomNav, Center, Spinner } from './components/UI';
+import BugReportButton from './components/BugReportButton';
 import PrototypeScreen from './screens/PrototypeScreen';
 import AuthScreen from './screens/AuthScreen';
 import OnboardScreen from './screens/OnboardScreen';
@@ -176,26 +177,26 @@ export default function App() {
   if (screen === 'error') return <AppShell><Center><div style={{ color: 'var(--red)', fontSize: 16, fontWeight: 700 }}>Failed to load</div><div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Check console for errors</div></Center></AppShell>;
 
   // Auth / Onboarding (name only → tutorial → archetype/deck)
-  if (screen === 'auth') return <AppShell><AuthScreen onDone={handleAuth} /></AppShell>;
-  if (screen === 'onboarding') return <AppShell><OnboardScreen user={user} mode="name_only" onDone={handleOnboard} /></AppShell>;
+  if (screen === 'auth') return <AppShell><AuthScreen onDone={handleAuth} /><BugReportButton currentScreen={screen} matchId={null} /></AppShell>;
+  if (screen === 'onboarding') return <AppShell><OnboardScreen user={user} mode="name_only" onDone={handleOnboard} /><BugReportButton currentScreen={screen} matchId={null} /></AppShell>;
 
   // Tutorial gate for brand-new users
-  if (screen === 'tutorial') return <AppShell><TutorialGate onStart={() => setScreen('tutorial_match')} onSkip={() => { localStorage.setItem('openmat_tutorial_done', 'true'); setScreen('archetype_select'); }} /></AppShell>;
+  if (screen === 'tutorial') return <AppShell><TutorialGate onStart={() => setScreen('tutorial_match')} onSkip={() => { localStorage.setItem('openmat_tutorial_done', 'true'); setScreen('archetype_select'); }} /><BugReportButton currentScreen={screen} matchId={null} /></AppShell>;
 
   // Tutorial match — guided match vs Coach
-  if (screen === 'tutorial_match') return <AppShell><TutorialScreen profile={profile} user={user} onComplete={() => { localStorage.setItem('openmat_tutorial_done', 'true'); setScreen('archetype_select'); }} /></AppShell>;
+  if (screen === 'tutorial_match') return <AppShell><TutorialScreen profile={profile} user={user} onComplete={() => { localStorage.setItem('openmat_tutorial_done', 'true'); setScreen('archetype_select'); }} /><BugReportButton currentScreen={screen} matchId={null} /></AppShell>;
 
   // Archetype + Deck selection (after tutorial)
-  if (screen === 'archetype_select') return <AppShell><OnboardScreen user={user} mode="archetype_deck" onDone={handleArchetypeDone} /></AppShell>;
+  if (screen === 'archetype_select') return <AppShell><OnboardScreen user={user} mode="archetype_deck" onDone={handleArchetypeDone} /><BugReportButton currentScreen={screen} matchId={null} /></AppShell>;
 
   // NEW: Game Plan screen (between lobby and match)
-  if (screen === 'gameplan' && matchId) return <AppShell><GamePlanScreen profile={profile} matchId={matchId} opponent={opponent} onReady={handleGamePlanReady} isBot={navParams?.isBot || false} botId={navParams?.botId || null} /></AppShell>;
+  if (screen === 'gameplan' && matchId) return <AppShell><GamePlanScreen profile={profile} matchId={matchId} opponent={opponent} onReady={handleGamePlanReady} isBot={navParams?.isBot || false} botId={navParams?.botId || null} /><BugReportButton currentScreen={screen} matchId={matchId} /></AppShell>;
 
   // Match
-  if (screen === 'match' && matchId) return <AppShell><MatchScreen profile={profile} matchId={matchId} onEnd={handleMatchEnd} isBot={navParams?.isBot || false} botId={navParams?.botId || null} /></AppShell>;
+  if (screen === 'match' && matchId) return <AppShell><MatchScreen profile={profile} matchId={matchId} onEnd={handleMatchEnd} isBot={navParams?.isBot || false} botId={navParams?.botId || null} /><BugReportButton currentScreen={screen} matchId={matchId} /></AppShell>;
 
   // NEW: Post-Match Progression (replaces old ResultScreen)
-  if (screen === 'result' && endedMatch) return <AppShell><PostMatchScreen profile={profile} match={endedMatch} onHome={() => { setScreen('main'); setTab('home'); }} onRematch={handleRematch} /></AppShell>;
+  if (screen === 'result' && endedMatch) return <AppShell><PostMatchScreen profile={profile} match={endedMatch} onHome={() => { setScreen('main'); setTab('home'); }} onRematch={handleRematch} /><BugReportButton currentScreen={screen} matchId={endedMatch?.id || null} /></AppShell>;
 
   // Main tabs
   return (
@@ -205,6 +206,7 @@ export default function App() {
       {tab === 'deck' && <DeckScreen profile={profile} />}
       {tab === 'profile' && <ProfileScreen user={user} profile={profile} />}
       <BottomNav active={tab} onNavigate={setTab} />
+      <BugReportButton currentScreen={screen + ':' + tab} matchId={null} />
     </AppShell>
   );
 }

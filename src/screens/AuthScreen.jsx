@@ -52,10 +52,14 @@ export default function AuthScreen({ onDone }) {
   };
 
   function formatAuthError(e) {
-    console.log('RAW AUTH ERROR:', JSON.stringify(e, null, 2));
+    console.error('SIGNUP/LOGIN ERROR:', JSON.stringify(e, null, 2));
+    console.error('ERROR status:', e?.status, 'message:', e?.message, 'code:', e?.code);
     const msg = e?.message || String(e);
     if (e?.status === 429 || /rate.?limit|too many/i.test(msg)) {
       return "Too many attempts. Please wait a minute and try again.";
+    }
+    if (e?.status === 500 || e?.status === 422) {
+      return "Server error during signup. The account may have been created — try logging in. If that fails, contact support.";
     }
     return msg;
   }
