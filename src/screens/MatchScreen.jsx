@@ -288,9 +288,9 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
     // Fallback to lastLockedMoveRef if all fields are empty
     const fallback = lastLockedMoveRef.current || { name: 'Your Move', type: 'unknown' };
     const myMoveName = myMoveId === '__survive__' ? 'Survive' : myMoveId === '__spaz__' ? 'Spaz' : (myTech?.name || fallback.name);
-    const myMoveType = myMoveId === '__survive__' ? 'escape' : myMoveId === '__spaz__' ? 'takedown' : (myTech?.type || fallback.type);
+    const myMoveType = myMoveId === '__survive__' || myMoveId === '__spaz__' ? 'universal' : (myTech?.type || fallback.type);
     const oppMoveName = oppMoveId === '__survive__' ? 'Survive' : oppMoveId === '__spaz__' ? 'Spaz' : (oppTech?.name || 'Defended');
-    const oppMoveType = oppMoveId === '__survive__' ? 'escape' : oppMoveId === '__spaz__' ? 'takedown' : (oppTech?.type || 'unknown');
+    const oppMoveType = oppMoveId === '__survive__' || oppMoveId === '__spaz__' ? 'universal' : (oppTech?.type || 'unknown');
 
     // Build better description — avoid generic "escaped" unless escape-type technique
     let cleanDesc = turn.description ? turn.description.replace(/\s*\[VARIANT:\s*.+?\]/, '').trim() : 'Position holds';
@@ -478,7 +478,12 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
   const showingMovePick = phase === 'move' && !myLocked && match.status !== 'finished';
   const showingMoveWait = phase === 'move' && myLocked && match.status !== 'finished';
   const showingSub = phase === 'sub_minigame' && match.sub_minigame_active;
-  console.log('[SUB MINIGAME CHECK]', { phase, turn_phase: match.turn_phase, sub_minigame_active: match.sub_minigame_active, showingSub, sub_attacker_id: match.sub_attacker_id, sub_technique_id: match.sub_technique_id });
+  console.log('[SUB CHECK] turn_phase:', match.turn_phase);
+  console.log('[SUB CHECK] sub_minigame_active:', match.sub_minigame_active);
+  console.log('[SUB CHECK] sub_attacker_id:', match.sub_attacker_id);
+  console.log('[SUB CHECK] sub_technique_id:', match.sub_technique_id);
+  console.log('[SUB CHECK] current user is:', profile.id === match.sub_attacker_id ? 'ATTACKER' : 'DEFENDER');
+  console.log('[SUB CHECK] showingSub:', showingSub);
 
   const F = {
     display: { fontFamily: T.display },
@@ -1033,21 +1038,21 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
           animation: 'tapShake 0.4s ease-out',
         }}>
           <div style={{
-            ...F.display, fontSize: 72, fontWeight: 900, color: '#fff',
+            ...F.display, fontSize: 72, fontWeight: 900, color: tapOverlay.won ? '#1a1a1a' : '#fff',
             lineHeight: 1, letterSpacing: '0.05em',
             animation: 'tapBounce 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-            textShadow: '0 4px 20px rgba(0,0,0,0.4)',
+            textShadow: tapOverlay.won ? 'none' : '0 4px 20px rgba(0,0,0,0.4)',
           }}>TAP!</div>
           <div style={{
-            ...F.display, fontSize: 20, color: 'rgba(255,255,255,0.9)',
+            ...F.display, fontSize: 20, color: tapOverlay.won ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.9)',
             marginTop: 16, textAlign: 'center',
           }}>{tapOverlay.subName}</div>
           <div style={{
-            ...F.mono, fontSize: 13, color: 'rgba(255,255,255,0.7)',
+            ...F.mono, fontSize: 13, color: tapOverlay.won ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.7)',
             marginTop: 12, textTransform: 'uppercase', letterSpacing: '0.1em',
           }}>{tapOverlay.won ? 'Submission Victory!' : 'You got tapped'}</div>
           <div style={{
-            ...F.mono, fontSize: 11, color: 'rgba(255,255,255,0.5)',
+            ...F.mono, fontSize: 11, color: tapOverlay.won ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.5)',
             marginTop: 8,
           }}>{tapOverlay.winnerName} wins</div>
         </div>
