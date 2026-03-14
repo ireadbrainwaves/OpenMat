@@ -143,30 +143,24 @@ export const BotEngine = {
 
     console.log('Bot hand debug:', { position: match.current_position, handLength: botHand?.length, botHand });
     if (!botHand || botHand.length === 0) {
-      // Bot picks survive 70%, spaz 30% (same as player universal moves)
+      // Bot picks survive 70%, spaz 30% — submit through normal move flow
       const isP1 = match.player1_id === botId;
       const botGP = isP1 ? match.player1_gp : match.player2_gp;
       const pickSpaz = botGP >= 3 && Math.random() < 0.3;
-      const choice = pickSpaz ? 'spaz' : 'survive';
-      console.log(`Bot has no moves — picking ${choice} (GP: ${botGP})`);
+      const moveChoice = pickSpaz ? '__spaz__' : '__survive__';
+      console.log(`Bot has no moves — picking ${moveChoice} (GP: ${botGP})`);
       try {
-        if (choice === 'spaz') {
-          const { error } = await supabase.rpc('resolve_spaz', {
-            p_match_id: match.id,
-            p_player_id: botId,
-          });
-          if (error) console.error('Bot spaz error:', error.message);
-        } else {
-          const { error } = await supabase.rpc('resolve_survive', {
-            p_match_id: match.id,
-            p_player_id: botId,
-          });
-          if (error) console.error('Bot survive error:', error.message);
-        }
-        console.log(`Bot ${choice} complete — turn should advance via server`);
-        return choice;
+        const { error } = await supabase.rpc('bot_submit_move', {
+          p_match_id: match.id,
+          p_player_id: botId,
+          p_technique_id: moveChoice,
+          p_is_counter: false,
+        });
+        if (error) console.error('Bot universal move error:', error.message);
+        console.log(`Bot ${moveChoice} submitted through normal flow`);
+        return moveChoice;
       } catch (err) {
-        console.error(`Bot ${choice} failed entirely:`, err);
+        console.error(`Bot ${moveChoice} failed entirely:`, err);
         return 'survived';
       }
     }

@@ -1,1142 +1,725 @@
 import React from 'react';
-const { useState, useEffect, useRef, useCallback } = React;
-import { sb, dbg, G, getStatus, drawHand } from '../lib/supabase';
-import { GP_COSTS } from '../lib/constants';
-import { T, MTColors, MTLabels, TierDisplay } from '../lib/tokens';
-import { MoveIcon, StanceIcon } from '../lib/icons';
-import { Btn, Spinner, Center } from '../components/UI';
-import BotEngine from '../lib/botEngine';
+const { useState, useEffect, useRef } = React;
+import { T } from '../lib/tokens';
+import { Btn, GPBar, Coach } from '../components/UI';
 
 // ═══════════════════════════════════════════════════════════
-// TUTORIAL SCREEN — Guided match vs Coach (Iron Mike bot)
-// Real Supabase match with overlay instructions
+// TUTORIAL SCREEN — Fully scripted state machine
+// Zero server calls. Teaches stance triangle, positions, GP/subs.
 // ═══════════════════════════════════════════════════════════
 
-const COACH_UUID = '00000001-0000-0000-0000-000000000001';
-
-// Hardcoded tutorial deck — 1 move per position, all drilled
-const TUTORIAL_DECK = [
-  't_guard_pull',              // standing_neutral → guard_closed
-  't_closed_guard_armbar',     // guard_closed → submission
-  't_sc_escape_shrimp',        // side_control_bottom → guard_half_bottom
-  't_mount_escape_upa',        // mount_bottom → guard_closed_top
-  't_closed_guard_scissor_sweep' // guard_closed → mount_top
-];
-
-// Tutorial step definitions
-const STEPS = {
-  LOADING: 'loading',
-  T1_STANCE_INTRO: 't1_stance_intro',
-  T1_STANCE_PICK: 't1_stance_pick',
-  T2_MOVE_INTRO: 't2_move_intro',
-  T2_MOVE_PICK: 't2_move_pick',
-  T2_REVEAL: 't2_reveal',
-  T3_GP_INTRO: 't3_gp_intro',
-  T3_FREE: 't3_free',
-  T4_FREE: 't4_free',
-  T5_SUB_INTRO: 't5_sub_intro',
-  T5_SUB_PICK: 't5_sub_pick',
-  FINISH: 'finish',
+// ── Position display names ──────────────────────────────────
+const POS = {
+  standing_neutral:       { name: 'Standing',         top: false, bottom: false },
+  guard_closed:           { name: 'Closed Guard',     top: false, bottom: true  },
+  guard_closed_top:       { name: 'Closed Guard',     top: true,  bottom: false },
+  clinch_front_headlock:  { name: 'Front Headlock',   top: true,  bottom: false },
+  clinch_front_headlock_bottom: { name: 'Front Headlock', top: false, bottom: true },
+  side_control_bottom:    { name: 'Side Control',     top: false, bottom: true  },
+  side_control_top:       { name: 'Side Control',     top: true,  bottom: false },
 };
 
-export default function TutorialScreen({ profile, user, onComplete }) {
-  const [matchId, setMatchId] = useState(null);
-  const [match, setMatch] = useState(null);
-  const [opp, setOpp] = useState(null);
-  const [deck, setDeck] = useState([]);
-  const [sel, setSel] = useState(null);
-  const [moves, setMoves] = useState([]);
-  const [busy, setBusy] = useState(false);
-  const [lastTurn, setLastTurn] = useState(null);
-  const [turnHistory, setTurnHistory] = useState([]);
-  const [subSel, setSubSel] = useState(null);
-  const [selectedStance, setSelectedStance] = useState(null);
-  const [variantMap, setVariantMap] = useState({});
+function posLabel(posId) {
+  const p = POS[posId] || { name: posId, top: false, bottom: false };
+  const suffix = p.top ? ' (Top)' : p.bottom ? ' (Bottom)' : '';
+  return p.name + suffix;
+}
 
-  // Universal moves shown when hand is empty (not during sub minigame)
-  const universalMoves = [
-    { id: 'survive', name: 'Survive', type: 'universal', description: 'Hunker down. Rest and recover.', gp_cost: 0, gp_recovery: 1, is_universal: true },
-    { id: 'spaz', name: 'Spaz', type: 'universal', description: 'Explosive escape. Costs 3 GP. If opponent subs — checkmate.', gp_cost: 3, gp_recovery: 0, is_universal: true },
+// ── Stance colors ───────────────────────────────────────────
+const STANCE_C = { attack: T.red, defend: T.blue, setup: T.amber };
+const STANCE_ICON = { attack: '⚔️', defend: '🛡️', setup: '⚙️' };
+
+// ── Tighten meter component ────────────────────────────────
+function TightenMeter({ level, max = 5 }) {
+  return (
+    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+      <span style={{ fontFamily: T.mono, fontSize: 10, color: T.dim, marginRight: 4 }}>TIGHTEN</span>
+      {Array.from({ length: max }, (_, i) => (
+        <div key={i} style={{
+          width: 28, height: 14, borderRadius: 2,
+          background: i < level ? (level >= 3 ? T.red : T.amber) : T.surface3,
+          border: `1px solid ${i < level ? (level >= 3 ? T.red : T.amber) : T.border}`,
+          transition: 'all 0.4s',
+          animation: i < level && level >= 3 ? 'tightenPulse 1s ease-in-out infinite' : 'none',
+        }} />
+      ))}
+      <span style={{ fontFamily: T.mono, fontSize: 11, fontWeight: 600, color: level >= 3 ? T.red : T.amber, marginLeft: 4 }}>{level}/{max}</span>
+    </div>
+  );
+}
+
+// ── Stance card ─────────────────────────────────────────────
+function StanceCard({ stance, moveName, desc, selected, onClick, disabled }) {
+  const color = STANCE_C[stance];
+  const icon = STANCE_ICON[stance];
+  const sel = selected === stance;
+  return (
+    <button onClick={() => !disabled && onClick(stance)} disabled={disabled} style={{
+      width: '100%', padding: '14px 16px', textAlign: 'left', cursor: disabled ? 'default' : 'pointer',
+      background: sel ? `${color}15` : T.surface, border: `2px solid ${sel ? color : T.border}`,
+      borderRadius: 6, transition: 'all 0.15s', opacity: disabled && !sel ? 0.5 : 1,
+      position: 'relative', overflow: 'hidden',
+    }}>
+      {sel && <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: color }} />}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ fontSize: 22 }}>{icon}</span>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontFamily: T.display, fontSize: 18, letterSpacing: '0.04em', color: sel ? T.white : T.muted, textTransform: 'capitalize' }}>{stance}</div>
+          <div style={{ fontFamily: T.mono, fontSize: 11, color: color, marginTop: 2 }}>{moveName}</div>
+          <div style={{ fontFamily: T.body, fontSize: 11, color: T.dim, marginTop: 2 }}>{desc}</div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+// ── Position display ────────────────────────────────────────
+function PositionDisplay({ playerPos, coachPos }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', gap: 12 }}>
+      <div style={{ flex: 1, padding: '10px 12px', background: `${T.you}0A`, border: `1px solid ${T.you}25`, borderRadius: 6, textAlign: 'center' }}>
+        <div style={{ fontFamily: T.mono, fontSize: 9, color: T.dim, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4 }}>YOU</div>
+        <div style={{ fontFamily: T.display, fontSize: 16, color: T.you, letterSpacing: '0.04em' }}>{posLabel(playerPos)}</div>
+      </div>
+      <div style={{ flex: 1, padding: '10px 12px', background: `${T.opp}0A`, border: `1px solid ${T.opp}25`, borderRadius: 6, textAlign: 'center' }}>
+        <div style={{ fontFamily: T.mono, fontSize: 9, color: T.dim, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4 }}>COACH MIKE</div>
+        <div style={{ fontFamily: T.display, fontSize: 16, color: T.opp, letterSpacing: '0.04em' }}>{posLabel(coachPos)}</div>
+      </div>
+    </div>
+  );
+}
+
+// ── GP display ──────────────────────────────────────────────
+function GPDisplay({ playerGP, coachGP }) {
+  return (
+    <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontFamily: T.mono, fontSize: 9, color: T.dim, letterSpacing: '0.1em', marginBottom: 4 }}>YOUR GP</div>
+        <GPBar current={playerGP} max={10} />
+      </div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontFamily: T.mono, fontSize: 9, color: T.dim, letterSpacing: '0.1em', marginBottom: 4 }}>COACH GP</div>
+        <GPBar current={coachGP} max={10} />
+      </div>
+    </div>
+  );
+}
+
+// ── Lesson card (for What You Learned) ──────────────────────
+function LessonCard({ icon, title, text, delay }) {
+  return (
+    <div style={{
+      padding: '16px', background: T.surface, border: `1px solid ${T.border}`, borderRadius: 6,
+      animation: `fadeUp 0.4s ease-out ${delay}s both`,
+    }}>
+      <div style={{ fontSize: 24, marginBottom: 8 }}>{icon}</div>
+      <div style={{ fontFamily: T.display, fontSize: 20, color: T.white, letterSpacing: '0.04em', marginBottom: 6 }}>{title}</div>
+      <div style={{ fontFamily: T.body, fontSize: 12, color: T.muted, lineHeight: 1.6 }}>{text}</div>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ═════════════════════════════════════════════════════════════
+
+export default function TutorialScreen({ onComplete }) {
+  const [phase, setPhase] = useState('INTRO');
+  const [playerPosition, setPlayerPosition] = useState('standing_neutral');
+  const [coachPosition, setCoachPosition] = useState('standing_neutral');
+  const [playerGP, setPlayerGP] = useState(10);
+  const [coachGP, setCoachGP] = useState(10);
+  const [selectedStance, setSelectedStance] = useState(null);
+  const [turn1Result, setTurn1Result] = useState(null);
+  const [tightenMeter, setTightenMeter] = useState(1);
+  const [subHistory, setSubHistory] = useState([]);
+  const [showTap, setShowTap] = useState(false);
+  const [tapMessageVisible, setTapMessageVisible] = useState(false);
+
+  // Auto-advance after resolve phases (brief pause to read)
+  const timerRef = useRef(null);
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  // Auto-advance from transition phase
+  useEffect(() => {
+    if (phase === 'TURN_2_TRANSITION') {
+      timerRef.current = setTimeout(() => setPhase('TURN_3_SUB_INTRO'), 1500);
+    }
+  }, [phase]);
+
+  // ── TURN 1 STANCE DATA ──────────────────────────────────
+  const turn1Stances = [
+    { stance: 'attack', moveName: 'Guard Pull', moveType: 'transition', desc: 'Pull guard — get to your game' },
+    { stance: 'defend', moveName: 'Sprawl', moveType: 'escape', desc: 'Stuff the takedown attempt' },
+    { stance: 'setup',  moveName: 'Establish Collar Tie', moveType: 'transition', desc: 'Set up grips for your next move' },
   ];
 
-  // Reveal
-  const [showReveal, setShowReveal] = useState(false);
-  const [revealData, setRevealData] = useState(null);
-  const [yourFlipped, setYourFlipped] = useState(false);
-  const [oppFlipped, setOppFlipped] = useState(false);
-  const [showResult, setShowResult] = useState(false);
-
-  // TAP overlay
-  const [tapOverlay, setTapOverlay] = useState(null);
-  // Sub choice reveal
-  const [subReveal, setSubReveal] = useState(null);
-  // Escaped overlay
-  const [subEscaped, setSubEscaped] = useState(false);
-
-  // Tutorial step
-  const [step, setStep] = useState(STEPS.LOADING);
-  const [overlayDismissed, setOverlayDismissed] = useState(false);
-  const [subFallbackShown, setSubFallbackShown] = useState(false);
-  const subEverTriggeredRef = useRef(false);
-
-  const lastLockedMoveRef = useRef(null);
-  const lastSubChoiceRef = useRef(null);
-  const matchRef = useRef(null);
-  const prevTurnRef = useRef(0);
-  const revealTimerRef = useRef(null);
-  const endedRef = useRef(false);
-
-  useEffect(() => { matchRef.current = match; }, [match]);
-
-  // ── DERIVED ─────────────────────────────────────────────
-  const amP1 = match?.player1_id === profile.id;
-  const myPos = amP1 ? (match?.player1_position || match?.current_position) : (match?.player2_position || match?.current_position);
-  const myPts = amP1 ? match?.player1_points : match?.player2_points;
-  const oppPts = amP1 ? match?.player2_points : match?.player1_points;
-  const myLocked = amP1 ? match?.player1_move_locked : match?.player2_move_locked;
-  const myStanceLocked = amP1 ? match?.player1_stance_locked : match?.player2_stance_locked;
-  const oppStanceVal = amP1 ? match?.player2_stance : match?.player1_stance;
-  const myStanceVal = amP1 ? match?.player1_stance : match?.player2_stance;
-  const phase = match?.turn_phase || 'stance';
-  const pos = G.positions[myPos];
-  const myGp = amP1 ? (match?.player1_gp ?? 10) : (match?.player2_gp ?? 10);
-  const oppGp = amP1 ? (match?.player2_gp ?? 10) : (match?.player1_gp ?? 10);
-  const myChain = amP1 ? (match?.player1_chain ?? 0) : (match?.player2_chain ?? 0);
-  const currentTurn = match?.current_turn ?? 1;
-
-  const F = {
-    display: { fontFamily: T.display },
-    mono: { fontFamily: T.mono },
-    body: { fontFamily: T.body },
-  };
-
-  // ── CREATE TUTORIAL MATCH ───────────────────────────────
-  useEffect(() => {
-    (async () => {
-      // Clear tutorial complete flag — user chose to play tutorial, so reset it
-      localStorage.removeItem('openmat_tutorial_done');
-      dbg('Tutorial: creating match vs Coach...', 'ok');
-      try {
-        const { data: mId, error } = await sb.rpc('challenge_bot', {
-          p_player_id: user.id,
-          p_bot_id: COACH_UUID,
-        });
-        if (error) { dbg('Tutorial match error: ' + error.message, 'err'); return; }
-        if (!mId) { dbg('Tutorial: no match ID returned', 'err'); return; }
-        dbg('Tutorial match created: ' + mId, 'ok');
-        setMatchId(mId);
-
-        // Load match
-        const { data: m } = await sb.from('matches').select('*').eq('id', mId).single();
-        console.log('[TUTORIAL] match loaded:', { id: mId, status: m?.status, turn: m?.current_turn, phase: m?.turn_phase });
-
-        // If the RPC returned a stale/finished match, try to get a fresh one
-        if (m && m.status === 'finished') {
-          console.warn('[TUTORIAL] Got a finished match from challenge_bot — creating a new one');
-          // Force a new match by directly inserting
-          const { data: freshId, error: freshErr } = await sb.rpc('challenge_bot', {
-            p_player_id: user.id,
-            p_bot_id: COACH_UUID,
-          });
-          if (!freshErr && freshId && freshId !== mId) {
-            const { data: freshM } = await sb.from('matches').select('*').eq('id', freshId).single();
-            if (freshM && freshM.status !== 'finished') {
-              console.log('[TUTORIAL] Fresh match:', freshId);
-              setMatchId(freshId);
-              setMatch(freshM); matchRef.current = freshM; prevTurnRef.current = freshM.current_turn;
-              // Continue with fresh match for opponent/deck loading below
-              const oppId2 = freshM.player1_id === profile.id ? freshM.player2_id : freshM.player1_id;
-              const { data: o2 } = await sb.from('profiles').select('*').eq('id', oppId2).single();
-              if (o2) setOpp(o2);
-              // Use hardcoded tutorial deck — all drilled
-              setDeck(TUTORIAL_DECK.map(id => ({ technique_id: id, tier: 'drilled', equipped_variant: null })));
-              setStep(STEPS.T1_STANCE_INTRO);
-              console.log('[TUTORIAL] initial step:', STEPS.T1_STANCE_INTRO, 'turn:', freshM.current_turn);
-              return;
-            }
-          }
-        }
-
-        if (m) { setMatch(m); matchRef.current = m; prevTurnRef.current = m.current_turn; }
-
-        // Load opponent (Coach)
-        const oppId = m?.player1_id === profile.id ? m?.player2_id : m?.player1_id;
-        const { data: o } = await sb.from('profiles').select('*').eq('id', oppId).single();
-        if (o) setOpp(o);
-
-        // Use hardcoded tutorial deck — all drilled
-        const tutDeck = TUTORIAL_DECK.map(id => ({ technique_id: id, tier: 'drilled', equipped_variant: null }));
-        setDeck(tutDeck);
-        // Set all tutorial moves as drilled in the match
-        await sb.rpc('set_drilled_moves', { p_match_id: mId, p_moves: TUTORIAL_DECK });
-
-        // Load turns
-        const { data: t } = await sb.from('match_turns').select('*').eq('match_id', mId).order('turn_number');
-        if (t) { setTurnHistory(t); if (t.length > 0) setLastTurn(t[t.length - 1]); }
-
-        setStep(STEPS.T1_STANCE_INTRO);
-        console.log('[TUTORIAL] initial step:', STEPS.T1_STANCE_INTRO, 'turn:', m?.current_turn);
-      } catch (e) {
-        dbg('Tutorial setup failed: ' + e.message, 'err');
-      }
-    })();
-  }, []);
-
-  // ── REALTIME + POLLING ──────────────────────────────────
-  const refreshMatch = useCallback(async () => {
-    if (!matchId) return;
-    const { data: m } = await sb.from('matches').select('*').eq('id', matchId).single();
-    if (!m) return;
-
-    const { data: t } = await sb.from('match_turns').select('*').eq('match_id', matchId).order('turn_number');
-    if (t) { setTurnHistory(t); if (t.length > 0) setLastTurn(t[t.length - 1]); }
-
-    if (m.current_turn > prevTurnRef.current && t && t.length > 0) {
-      triggerReveal(t[t.length - 1], m);
-      prevTurnRef.current = m.current_turn;
-    }
-
-    // Detect sub round advancement — show both choices
-    const prev = matchRef.current;
-    if (prev && m.sub_minigame_active && prev.sub_phase !== undefined && m.sub_phase > prev.sub_phase) {
-      const isAtt = m.sub_attacker_id === profile.id;
-      const myC = isAtt ? prev.sub_attacker_choice : prev.sub_defender_choice;
-      const oppC = isAtt ? prev.sub_defender_choice : prev.sub_attacker_choice;
-      if (myC || oppC) {
-        console.log('[SUB]', { sub_phase: m.sub_phase, tighten: m.sub_tighten_turns, active: m.sub_minigame_active, round: m.sub_phase, myChoice: myC, oppChoice: oppC });
-        setSubReveal({ myChoice: myC, oppChoice: oppC, isAttacker: isAtt });
-        setTimeout(() => setSubReveal(null), 1500);
-      }
-    }
-    if (prev && prev.sub_minigame_active && !m.sub_minigame_active) {
-      const isAtt = prev.sub_attacker_id === profile.id;
-      const myC = (isAtt ? prev.sub_attacker_choice : prev.sub_defender_choice) || lastSubChoiceRef.current;
-      const oppC = isAtt ? prev.sub_defender_choice : prev.sub_attacker_choice;
-      console.log('[SUB END]', { myChoice: myC, oppChoice: oppC, isAttacker: isAtt });
-      if (myC || oppC) {
-        setSubReveal({ myChoice: myC, oppChoice: oppC, isAttacker: isAtt });
-        setTimeout(() => setSubReveal(null), 2000);
-      }
-      // Show ESCAPED overlay if sub ended without a submission finish
-      const subFinished = m.status === 'finished' && (m.win_method === 'submission' || m.result_method === 'submission');
-      if (!subFinished) {
-        setSubEscaped(true);
-        setTimeout(() => setSubEscaped(false), 1500);
-      }
-      lastSubChoiceRef.current = null;
-    }
-
-    setMatch(m);
-    setSel(null); setSelectedStance(null); setSubSel(null);
-
-    // Advance tutorial step based on turn
-    const mPhase = m.turn_phase || 'stance';
-    if (m.current_turn === 2 && mPhase === 'stance') setStep(STEPS.T2_MOVE_INTRO);
-    if (m.current_turn === 3 && mPhase === 'stance') setStep(STEPS.T3_GP_INTRO);
-    if (m.current_turn >= 4 && mPhase === 'stance' && step !== STEPS.FINISH && step !== STEPS.T5_SUB_INTRO && step !== STEPS.T5_SUB_PICK) setStep(STEPS.T4_FREE);
-    if (m.sub_minigame_active && step !== STEPS.T5_SUB_PICK) {
-      subEverTriggeredRef.current = true;
-      setStep(STEPS.T5_SUB_INTRO);
-    }
-    // Fallback: if turn >= 5 and no sub ever triggered, show scripted sub explanation
-    if (m.current_turn >= 5 && !subEverTriggeredRef.current && !subFallbackShown && mPhase === 'stance' && step !== STEPS.FINISH) {
-      setSubFallbackShown(true);
-    }
-
-    if (m.status === 'finished' && !endedRef.current) {
-      // Only end if we've actually played some turns (prevent stale match skip)
-      if (m.current_turn > 1 || (t && t.length > 0)) {
-        endedRef.current = true;
-        const winMethod = m.win_method || m.result_method || m.method || m.finish_method || m.result || '';
-        console.log('[MATCH END CHECK]', { status: m.status, winner: m.winner_id, win_method: m.win_method, result_method: m.result_method, method: m.method, finish_method: m.finish_method, result: m.result, sub_technique_id: m.sub_technique_id });
-        // Show TAP overlay for submission finishes before FINISH screen
-        if (winMethod === 'submission' || m.sub_technique_id) {
-          const iWon = m.winner_id === profile.id;
-          const subTech = m.sub_technique_id ? G.techniques[m.sub_technique_id] : null;
-          setTapOverlay({
-            won: iWon,
-            subName: subTech?.name || 'Submission',
-            winnerName: iWon ? (profile.display_name || 'You') : 'Coach',
-          });
-          setTimeout(() => {
-            setTapOverlay(null);
-            localStorage.setItem('openmat_tutorial_done', 'true');
-            setStep(STEPS.FINISH);
-          }, 2500);
-        } else {
-          localStorage.setItem('openmat_tutorial_done', 'true');
-          setStep(STEPS.FINISH);
-        }
-      } else {
-        console.warn('[TUTORIAL] ignoring finished status — no turns played yet (stale match?)');
-      }
-    }
-  }, [matchId]);
-
-  useEffect(() => {
-    if (!matchId) return;
-    const ch = sb.channel('tut-match-' + matchId).on('postgres_changes',
-      { event: 'UPDATE', schema: 'public', table: 'matches', filter: 'id=eq.' + matchId },
-      () => refreshMatch()
-    ).subscribe();
-
-    const poll = setInterval(async () => {
-      if (!matchRef.current) return;
-      const { data: m } = await sb.from('matches').select('current_turn, turn_phase, status, player1_move_locked, player2_move_locked, player1_stance_locked, player2_stance_locked, sub_minigame_active, sub_phase, sub_tighten_turns, sub_attacker_locked, sub_defender_locked').eq('id', matchId).single();
-      if (!m) return;
-      const prev = matchRef.current;
-      if (m.current_turn !== prev.current_turn || m.turn_phase !== prev.turn_phase || m.status !== prev.status ||
-          m.player1_move_locked !== prev.player1_move_locked || m.player2_move_locked !== prev.player2_move_locked ||
-          m.player1_stance_locked !== prev.player1_stance_locked || m.player2_stance_locked !== prev.player2_stance_locked ||
-          m.sub_minigame_active !== prev.sub_minigame_active || m.sub_phase !== prev.sub_phase ||
-          m.sub_tighten_turns !== prev.sub_tighten_turns || m.sub_attacker_locked !== prev.sub_attacker_locked || m.sub_defender_locked !== prev.sub_defender_locked) {
-        refreshMatch();
-      }
-    }, 2000);
-
-    return () => { sb.removeChannel(ch); clearInterval(poll); };
-  }, [matchId, refreshMatch]);
-
-  // ── REVEAL ──────────────────────────────────────────────
-  function parseVariant(desc) {
-    if (!desc) return null;
-    const m = desc.match(/\[VARIANT:\s*(.+?)\]/);
-    return m ? m[1].trim() : null;
+  // ── TURN 1 RESOLVE ──────────────────────────────────────
+  function resolveTurn1(stance) {
+    setSelectedStance(stance);
+    setTurn1Result(stance);
+    setPhase('TURN_1_RESOLVE');
   }
 
-  function triggerReveal(turn, freshMatch) {
-    const m = freshMatch || matchRef.current;
-    const isP1 = m?.player1_id === profile.id;
-    const variantName = parseVariant(turn.description);
-
-    // Use match fields OR match_turns fields for move IDs (server may clear match fields after resolve)
-    const myMoveId = (isP1 ? m?.player1_move : m?.player2_move) || (isP1 ? turn.player1_technique_id : turn.player2_technique_id) || (isP1 ? turn.player1_move : turn.player2_move);
-    const oppMoveId = (isP1 ? m?.player2_move : m?.player1_move) || (isP1 ? turn.player2_technique_id : turn.player1_technique_id) || (isP1 ? turn.player2_move : turn.player1_move);
-    const myTech = myMoveId ? G.techniques[myMoveId] : null;
-    const oppTech = oppMoveId ? G.techniques[oppMoveId] : null;
-    const fallback = lastLockedMoveRef.current || { name: 'Your Move', type: 'unknown' };
-    const myMoveName = myTech?.name || fallback.name;
-    const myMoveType = myTech?.type || fallback.type;
-    const oppMoveName = oppTech?.name || 'Defended';
-    const oppMoveType = oppTech?.type || 'unknown';
-
-    // Build better description
-    let cleanDesc = turn.description ? turn.description.replace(/\s*\[VARIANT:\s*.+?\]/, '').trim() : 'Position holds';
-    if (cleanDesc.toLowerCase().includes('escaped') && oppTech && oppTech.type !== 'escape') {
-      if (oppTech && myTech) cleanDesc = `${myMoveName} countered by ${oppMoveName}!`;
+  function getTurn1Outcome() {
+    switch (turn1Result) {
+      case 'attack': return {
+        text: "You both attacked! Your guard pull got there first — but you're on bottom now.",
+        lesson: 'Attack vs Attack — both moves fire. Speed decides.',
+        lessonType: 'neutral',
+        pPos: 'guard_closed', cPos: 'guard_closed_top',
+        pGP: -1, cGP: -2,
+      };
+      case 'defend': return {
+        text: "You sprawled on Coach's double leg! Defend beats Attack!",
+        lesson: '✓ DEFEND beats ATTACK',
+        lessonType: 'win',
+        pPos: 'clinch_front_headlock', cPos: 'clinch_front_headlock_bottom',
+        pGP: 0, cGP: -2,
+      };
+      case 'setup': return {
+        text: "You were setting up grips while Coach shot! Attack beats Setup — he got the takedown.",
+        lesson: '✗ ATTACK beats SETUP',
+        lessonType: 'lose',
+        pPos: 'side_control_bottom', cPos: 'side_control_top',
+        pGP: -1, cGP: -2,
+      };
+      default: return null;
     }
-    if (!cleanDesc || cleanDesc === 'Position holds') {
-      if (myTech && turn.result === 'sweep') cleanDesc = `${myMoveName} lands!`;
-      else if (myTech && turn.result === 'submission_win') cleanDesc = `${myMoveName} locked in!`;
-      else if (oppTech && myTech) cleanDesc = `${myMoveName} vs ${oppMoveName}`;
-    }
-
-    console.log('[REVEAL]', { isPlayer1: isP1, myMoveId, oppMoveId, myMoveName, oppMoveName, description: cleanDesc });
-    console.log('[REVEAL CARD]', { opponentStance: isP1 ? m?.player2_stance : m?.player1_stance, opponentMove: oppMoveId, oppMoveName, oppMoveType });
-    setRevealData({ description: cleanDesc, result: turn.result, turn: turn.turn_number, myMoveName, myMoveType, variantName: variantName || fallback.variantName, oppMoveName, oppMoveType });
-    setYourFlipped(false); setOppFlipped(false); setShowResult(false);
-    setShowReveal(true);
-    setTimeout(() => setYourFlipped(true), 400);
-    setTimeout(() => setOppFlipped(true), 750);
-    setTimeout(() => setShowResult(true), 1200);
-    if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
-    revealTimerRef.current = setTimeout(dismissReveal, 5000);
-    lastLockedMoveRef.current = null;
   }
 
-  function dismissReveal() {
-    if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
-    setShowReveal(false); setRevealData(null);
-    setYourFlipped(false); setOppFlipped(false); setShowResult(false);
-    setOverlayDismissed(false);
+  // ── TURN 2 STANCE DATA ──────────────────────────────────
+  function getTurn2Config() {
+    if (turn1Result === 'attack') {
+      return {
+        coachStance: 'setup', coachMove: 'Stand Up in Closed Guard',
+        stances: [
+          { stance: 'attack', moveName: 'Scissor Sweep', moveType: 'sweep', desc: 'Sweep Coach — try to get on top!' },
+          { stance: 'defend', moveName: 'Hold Closed Guard', moveType: 'transition', desc: 'Keep guard locked — stay safe' },
+          { stance: 'setup',  moveName: 'Break Posture', moveType: 'transition', desc: "Control Coach's posture for your next attack" },
+        ],
+        outcomes: {
+          attack: {
+            text: "Attack beats Setup! Your sweep almost landed — that's the right read. Coach is just too experienced and recovers to pass.",
+            lesson: '✓ ATTACK beats SETUP', lessonType: 'win', pGP: -2,
+          },
+          defend: {
+            text: "Both playing it safe — stalemate. Coach eventually stands and passes your guard.",
+            lesson: 'Defend vs Setup — standoff. Coach finds an opening.', lessonType: 'neutral', pGP: 0,
+          },
+          setup: {
+            text: "Setup vs Setup — no advantage. Coach breaks free and passes.",
+            lesson: 'Setup vs Setup — neither gains an edge.', lessonType: 'neutral', pGP: -1,
+          },
+        },
+      };
+    }
+    if (turn1Result === 'defend') {
+      return {
+        coachStance: 'defend', coachMove: 'Turtle Up',
+        stances: [
+          { stance: 'attack', moveName: "D'Arce Choke", moveType: 'submission', desc: 'Go for the choke! High risk, high reward' },
+          { stance: 'defend', moveName: 'Hold Front Headlock', moveType: 'transition', desc: "Maintain your control — don't give anything up" },
+          { stance: 'setup',  moveName: 'Go Behind to Back', moveType: 'transition', desc: 'Circle behind Coach for back control' },
+        ],
+        outcomes: {
+          attack: {
+            text: "You went for the kill! But Coach is experienced — he scrambles free and reverses you.",
+            lesson: 'Attack vs Defend — your aggression got countered.', lessonType: 'neutral', pGP: -3,
+          },
+          defend: {
+            text: "Defend vs Defend — nobody moves. Coach eventually works free and reverses.",
+            lesson: 'Defend vs Defend — stalemate. Position lost.', lessonType: 'neutral', pGP: 0,
+          },
+          setup: {
+            text: "Setup beats Defend! You almost took Coach's back — but he's a veteran. He scrambles and reverses to side control.",
+            lesson: '✓ SETUP beats DEFEND', lessonType: 'win', pGP: -1,
+          },
+        },
+      };
+    }
+    // turn1Result === 'setup'
+    return {
+      coachStance: 'attack', coachMove: 'Americana',
+      stances: [
+        { stance: 'attack', moveName: 'Shrimp Escape', moveType: 'escape', desc: 'Hip escape — try to get out!' },
+        { stance: 'defend', moveName: 'Frame and Block', moveType: 'escape', desc: 'Block the attack — protect yourself' },
+        { stance: 'setup',  moveName: 'Roll to Turtle', moveType: 'escape', desc: 'Try to get to your knees' },
+      ],
+      outcomes: {
+        attack: {
+          text: "Attack vs Attack — Coach's Americana is stronger from top. You fight it off but stay pinned.",
+          lesson: 'Attack vs Attack — top position wins the exchange.', lessonType: 'neutral', pGP: -1,
+        },
+        defend: {
+          text: "Defend beats Attack! You blocked Coach's Americana — good survival instinct. But he's still on top.",
+          lesson: '✓ DEFEND beats ATTACK', lessonType: 'win', pGP: 0,
+        },
+        setup: {
+          text: "Too slow — Coach is already attacking. You can't set up while he's going for the Americana.",
+          lesson: '✗ ATTACK beats SETUP', lessonType: 'lose', pGP: -1,
+        },
+      },
+    };
   }
 
-  // ── MOVES ───────────────────────────────────────────────
-  const deckIds = deck.map(d => d.technique_id);
-  const deckTiers = {};
-  deck.forEach(d => { deckTiers[d.technique_id] = d.tier || 'trained'; });
-
-  const myDrilled = amP1 ? (match?.player1_drilled_moves || []) : (match?.player2_drilled_moves || []);
-
-  useEffect(() => {
-    if (myPos && deck.length > 0) {
-      let m = drawHand(myPos, profile.belt, deckIds, deckTiers, false, profile.archetype, myDrilled);
-      console.log('[HAND FINAL]', { position: myPos, stance: myStanceVal, movesBeforeRender: m.length, deckSize: deckIds.length, belt: profile.belt });
-      if (m.length === 0) {
-        for (const dp of ['defending_clinch', 'defending_passing', 'defending_leg_entanglement', 'defending_back', 'defending_mount']) {
-          const defMoves = drawHand(dp, profile.belt, deckIds, deckTiers, false, profile.archetype, myDrilled);
-          if (defMoves.length > 0) { m = defMoves; break; }
-        }
-      }
-      setMoves(m);
-    }
-  }, [myPos, deck, match?.current_turn]);
-
-  // Three hand states: normal, low GP + survive, zero moves + survive/spaz
-  const inMovePhase = phase === 'move' && !myLocked && deck.length > 0 && myPos && !match?.sub_minigame_active && match?.status !== 'finished';
-  const zeroMoves = inMovePhase && moves.length === 0;
-  const showSurviveExtra = inMovePhase && moves.length > 0 && myGp < 3;
-
-
-  // ── ACTIONS ─────────────────────────────────────────────
-  async function lockStance(stance) {
-    if (busy) return; setSelectedStance(stance); setBusy(true);
-    const { error } = await sb.rpc('submit_stance', { p_match_id: matchId, p_stance: stance });
-    if (error) dbg('Stance error: ' + error.message, 'err');
-    if (!error) {
-      // Bot responds immediately in tutorial (no delay)
-      setTimeout(() => {
-        BotEngine.respondToStance(matchRef.current, COACH_UUID, 'wrestler', 'easy');
-      }, 300);
-    }
-    setBusy(false);
-    if (step === STEPS.T1_STANCE_PICK) setStep(STEPS.T2_MOVE_INTRO);
-    setOverlayDismissed(false);
+  // ── TURN 2 RESOLVE ──────────────────────────────────────
+  function resolveTurn2(stance) {
+    setSelectedStance(stance);
+    const cfg = getTurn2Config();
+    const o = cfg.outcomes[stance];
+    setPlayerGP(prev => Math.max(0, prev + o.pGP));
+    setPlayerPosition('side_control_bottom');
+    setCoachPosition('side_control_top');
+    setPhase('TURN_2_RESOLVE');
   }
 
-  async function lockMove() {
-    if (!sel || busy) return; setBusy(true);
+  // ── SUB MINIGAME ────────────────────────────────────────
+  function handleSubChoice(choice) {
+    const newHistory = [...subHistory, choice];
+    setSubHistory(newHistory);
 
-    // Handle universal moves (survive / spaz)
-    if (sel.is_universal) {
-      const uMove = universalMoves.find(u => u.id === sel.id);
-      lastLockedMoveRef.current = { name: uMove?.name || sel.id, type: 'universal', variantName: null };
-      console.log('[UNIVERSAL]', sel.id, '— submitting (tutorial)');
+    if (choice === 'explode' && playerGP >= 3) {
+      setPlayerGP(prev => prev - 3);
+    }
 
-      if (sel.id === 'survive') {
-        const { error } = await sb.rpc('resolve_survive', { p_match_id: matchId, p_player_id: profile.id });
-        if (error) dbg('Survive error: ' + error.message, 'err');
-      } else if (sel.id === 'spaz') {
-        const { error } = await sb.rpc('resolve_spaz', { p_match_id: matchId, p_player_id: profile.id });
-        if (error) dbg('Spaz error: ' + error.message, 'err');
-      }
-
-      // Always refresh after universal move RPC to pick up state changes
-      await refreshMatch();
-
-      // Bot response
-      const m = matchRef.current;
-      const botDrills = m?.player1_id === COACH_UUID ? (m?.player1_drilled_moves || []) : (m?.player2_drilled_moves || []);
-      const botPos = m?.player1_id === COACH_UUID ? m?.player1_position : m?.player2_position;
-      const { data: botHand } = await sb.rpc('draw_hand', {
-        p_profile_id: COACH_UUID,
-        p_position: botPos || m?.current_position,
-        p_archetype: 'wrestler',
-        p_drilled_moves: botDrills,
-      });
-      await BotEngine.respondToMove(m, COACH_UUID, 'wrestler', botHand, botDrills, myStanceVal, 'easy');
-      setTimeout(() => refreshMatch(), 500);
-      setBusy(false);
+    const round = newHistory.length;
+    if (round >= 3) {
+      // Final round — always caught
+      setTightenMeter(5);
+      // Show tap after brief delay
+      timerRef.current = setTimeout(() => {
+        setShowTap(true);
+        // Show message after tap animation
+        setTimeout(() => setTapMessageVisible(true), 2500);
+      }, 800);
+      setPhase('TAP');
       return;
     }
 
-    // Normal move
-    const allM = [...moves];
-    const played = allM.find(m => m.id === sel.id);
-    const variant = variantMap[sel.id];
-    lastLockedMoveRef.current = played
-      ? { name: played.name, type: played.type || 'unknown', variantName: variant?.variant_name || null }
-      : { name: '???', type: 'unknown', variantName: null };
-    const { error } = await sb.rpc('submit_move', { p_match_id: matchId, p_technique_id: sel.id, p_is_counter: false, p_is_bait: false, p_feint_move: null });
-    if (error) dbg('Move error: ' + error.message, 'err');
-    if (!error) {
-      const m = matchRef.current;
-      const botDrills = m?.player1_id === COACH_UUID ? (m?.player1_drilled_moves || []) : (m?.player2_drilled_moves || []);
-      const botPos = m?.player1_id === COACH_UUID ? m?.player1_position : m?.player2_position;
-      const { data: botHand } = await sb.rpc('draw_hand', {
-        p_profile_id: COACH_UUID,
-        p_position: botPos || m?.current_position,
-        p_archetype: 'wrestler',
-        p_drilled_moves: botDrills,
-      });
-      await BotEngine.respondToMove(m, COACH_UUID, 'wrestler', botHand, botDrills, myStanceVal, 'easy');
-      setTimeout(() => refreshMatch(), 500);
-    }
-    setBusy(false);
+    // Advance tighten
+    const newTighten = round + 1;
+    setTightenMeter(newTighten);
+
+    if (round === 1) setPhase('SUB_ROUND_2');
+    if (round === 2) setPhase('SUB_ROUND_3');
   }
 
-  async function lockSubChoice() {
-    if (!subSel || busy) return;
-    setBusy(true);
-    lastSubChoiceRef.current = subSel;
-    const { error } = await sb.rpc('submit_sub_choice', { p_match_id: matchId, p_choice: subSel });
-    if (error) {
-      dbg('Sub err: ' + error.message, 'err');
+  function getSubCoachMsg(round) {
+    if (round === 1 && subHistory.length === 1) {
+      return subHistory[0] === 'survive'
+        ? "Good. You're not panicking. That's step one."
+        : "Wild movement. I adjusted. Save your energy.";
+    }
+    if (round === 2 && subHistory.length === 2) {
+      return subHistory[1] === 'survive'
+        ? "The grip is getting tighter... you need to do something."
+        : "You made space! But you're gassing out.";
+    }
+    return null;
+  }
+
+  function getTapMessage() {
+    const explodeCount = subHistory.filter(s => s === 'explode').length;
+    const surviveCount = subHistory.filter(s => s === 'survive').length;
+
+    let msg;
+    if (explodeCount >= 2 || (explodeCount >= 1 && playerGP <= 2)) {
+      msg = "You burned all your energy fighting it. That's what happens when you spaz. Stay calm, save your gas.";
+    } else if (surviveCount === 3) {
+      msg = "You stayed calm. That's actually good. But calm isn't enough — you need technique to escape. That comes with training.";
     } else {
-      setSubSel(null);
-      if (match?.sub_minigame_active) {
-        const botIsAttacker = match.sub_attacker_id !== profile.id;
-        await BotEngine.respondToSubMinigame(match, COACH_UUID, botIsAttacker, 'easy');
-        setTimeout(() => refreshMatch(), 500);
-      }
+      msg = "You tried to fight it. Sometimes that works, sometimes it doesn't. The key is knowing WHEN to explode.";
     }
-    setBusy(false);
-    if (step === STEPS.T5_SUB_PICK) setStep(STEPS.T4_FREE);
+    return msg + "\n\nEveryone gets tapped their first day. That's your first lesson.";
   }
 
-  function getEffGP(m) {
-    const base = m.gp_cost || GP_COSTS[m.type] || 1;
-    const tier = deckTiers[m.id];
-    if (tier === 'drilled') return Math.max(1, base - 1);
-    if (tier === 'known') return base + 1;
-    return base;
-  }
+  // ── RENDER ──────────────────────────────────────────────
 
-  function handleTutorialComplete() {
-    localStorage.setItem('openmat_tutorial_done', 'true');
-    onComplete();
-  }
-
-  // ═══════════════════════════════════════════════════════════
-  // RENDER
-  // ═══════════════════════════════════════════════════════════
-  if (step === STEPS.LOADING || !match || !opp) {
-    return (
-      <Center>
-        <Spinner size={30} />
-        <div style={{ ...F.mono, color: T.muted, fontSize: 12, marginTop: 8 }}>Setting up tutorial match...</div>
-      </Center>
-    );
-  }
-
-  // ── FINISH SCREEN ───────────────────────────────────────
-  if (step === STEPS.FINISH) {
-    return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 28px', gap: 16, background: T.bg }}>
-        <div style={{ ...F.display, fontSize: 28, color: T.text, textAlign: 'center' }}>Everyone Gets Tapped</div>
-        <div style={{ ...F.mono, fontSize: 12, color: T.muted, textAlign: 'center', lineHeight: 1.6 }}>
-          That's your first lesson. Now go train.
-        </div>
-
-        <div style={{ width: '100%', maxWidth: 300, display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
-          {[
-            { label: 'Stances', desc: 'Attack, Defend, or Setup each turn', color: T.red },
-            { label: 'GP Energy', desc: 'Moves cost GP. Setup recovers it.', color: T.green },
-            { label: 'Moves', desc: 'Pick from your hand based on position', color: T.blue },
-            { label: 'Submissions', desc: 'A minigame when a sub lands', color: T.amber },
-          ].map(card => (
-            <div key={card.label} style={{
-              display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-              borderRadius: 8, background: T.surface, border: `1px solid ${T.border}`,
-            }}>
-              <div style={{ width: 6, height: 28, borderRadius: 3, background: card.color, flexShrink: 0 }} />
-              <div>
-                <div style={{ ...F.body, fontSize: 13, fontWeight: 600, color: T.text }}>{card.label}</div>
-                <div style={{ ...F.mono, fontSize: 9, color: T.muted }}>{card.desc}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <Btn onClick={handleTutorialComplete} style={{ marginTop: 16, width: '100%', maxWidth: 300 }}>
-          Ready to Train
-        </Btn>
-      </div>
-    );
-  }
-
-  // ── MATCH UI (mirrors MatchScreen) ──────────────────────
-  const gpPct = (myGp / 12) * 100;
-  const gpColor = myGp <= 2 ? T.red : myGp <= 5 ? T.amber : T.green;
-  const myStatus = getStatus(myPos, profile.archetype);
-  const statusColor = { dominant: T.green, neutral: T.muted, defending: T.amber, disadvantaged: T.red };
-
-  const showingStancePick = phase === 'stance' && !myStanceLocked && match.status !== 'finished';
-  const showingStanceWait = phase === 'stance' && myStanceLocked && match.status !== 'finished';
-  const showingMovePick = phase === 'move' && !myLocked && match.status !== 'finished';
-  const showingMoveWait = phase === 'move' && myLocked && match.status !== 'finished';
-  const showingSub = phase === 'sub_minigame' && match.sub_minigame_active;
-
-  // Tutorial step logic
-  const showStanceOverlay = (step === STEPS.T1_STANCE_INTRO) && !overlayDismissed;
-  const forceAttack = step === STEPS.T1_STANCE_INTRO || step === STEPS.T1_STANCE_PICK;
-  const showMoveOverlay = step === STEPS.T2_MOVE_INTRO && !overlayDismissed;
-  const showGpOverlay = step === STEPS.T3_GP_INTRO && !overlayDismissed;
-  const showSubOverlay = step === STEPS.T5_SUB_INTRO && !overlayDismissed;
-
-  // Stance config
-  const stancesCfg = [
-    { id: 'attack', label: 'Attack', desc: 'Commit to offense -- base GP cost', gp: 'Base GP', color: T.red },
-    { id: 'defend', label: 'Defend', desc: '+15% defense -- counters free', gp: '0 GP', color: T.blue },
-    { id: 'setup',  label: 'Setup',  desc: 'Recover grip, reset -- +2 GP',   gp: '+2 GP', color: T.amber },
-  ];
-
-  return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative', background: T.bg }}>
-
-      {/* ═══ COACH HEADER ═══ */}
-      <div style={{ padding: '6px 18px', borderBottom: `1px solid ${T.border}`, background: T.surface, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div>
-          <div style={{ ...F.mono, fontSize: 9, color: T.muted, textTransform: 'uppercase' }}>Tutorial -- Turn {currentTurn}</div>
-          <div style={{ ...F.display, fontSize: 16, color: T.text }}>vs Coach</div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ ...F.display, fontSize: 22, color: T.text, lineHeight: 1 }}>{myPts || 0}</div>
-            <div style={{ ...F.mono, fontSize: 7, color: T.dim }}>YOU</div>
-          </div>
-          <div style={{ ...F.mono, fontSize: 10, color: T.dim }}>-</div>
-          <div>
-            <div style={{ ...F.display, fontSize: 22, color: T.muted, lineHeight: 1 }}>{oppPts || 0}</div>
-            <div style={{ ...F.mono, fontSize: 7, color: T.dim }}>OPP</div>
-          </div>
-        </div>
-      </div>
-
-      {/* ═══ GP BAR ═══ */}
-      <div style={{ display: 'flex', alignItems: 'center', padding: '5px 18px', gap: 8, borderBottom: `1px solid ${T.border}`, background: T.surface, position: 'relative' }}>
-        <span style={{ ...F.display, fontSize: 16, color: gpColor, lineHeight: 1 }}>{myGp}</span>
-        <span style={{ ...F.mono, fontSize: 8, color: T.dim }}>/12 GP</span>
-        <div style={{ flex: 1, height: 3, background: T.border, borderRadius: 2, overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: gpPct + '%', background: gpColor, borderRadius: 2, transition: 'width 0.3s' }} />
-        </div>
-        {showGpOverlay && <div style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, border: `2px solid ${T.amber}`, borderRadius: 4, pointerEvents: 'none', animation: 'tutPulse 1.5s ease infinite' }} />}
-      </div>
-
-      {/* ═══ POSITION ═══ */}
-      <div style={{ flexShrink: 0, height: 44, borderBottom: `1px solid ${T.border}`, background: T.surface, display: 'flex', alignItems: 'center', padding: '0 18px', justifyContent: 'space-between' }}>
-        <div style={{ ...F.display, fontSize: 15, color: T.text }}>{pos?.name?.replace(/ \(.*\)/, '') || 'Standing'}</div>
-        <span style={{ ...F.mono, fontSize: 8, padding: '2px 6px', borderRadius: 3, textTransform: 'uppercase', color: statusColor[myStatus] || T.muted, background: (statusColor[myStatus] || T.muted) + '14' }}>{myStatus}</span>
-      </div>
-
-      {/* ═══ PHASE CONTENT ═══ */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
-
-        {/* STANCE PICK */}
-        {showingStancePick && (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 18px', gap: 12 }}>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {stancesCfg.map(s => {
-                const isSel = selectedStance === s.id;
-                const dimmed = forceAttack && s.id !== 'attack';
-                return (
-                  <div key={s.id} onClick={() => {
-                    if (dimmed || busy) return;
-                    if (forceAttack) { setStep(STEPS.T1_STANCE_PICK); }
-                    lockStance(s.id);
-                  }} style={{
-                    flex: 1, padding: '14px 8px', borderRadius: 10, textAlign: 'center',
-                    cursor: dimmed ? 'default' : 'pointer', opacity: dimmed ? 0.25 : 1,
-                    border: `1px solid ${isSel ? s.color : T.border}`,
-                    background: isSel ? s.color + '12' : T.surface,
-                    transition: 'all 0.18s', position: 'relative',
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 6 }}>
-                      <StanceIcon stance={s.id} size={24} />
-                    </div>
-                    <div style={{ ...F.display, fontSize: 13, color: isSel ? T.text : T.muted }}>{s.label}</div>
-                    <div style={{ ...F.mono, fontSize: 8, color: T.dim, marginTop: 2 }}>{s.desc}</div>
-                    <div style={{ ...F.mono, fontSize: 10, fontWeight: 600, color: isSel ? s.color : T.dim, marginTop: 4 }}>{s.gp}</div>
-                    {forceAttack && s.id === 'attack' && (
-                      <div style={{ position: 'absolute', inset: -2, border: `2px solid ${T.red}`, borderRadius: 12, pointerEvents: 'none', animation: 'tutPulse 1.5s ease infinite' }} />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            {forceAttack && (
-              <div style={{ ...F.mono, fontSize: 10, color: T.amber, textAlign: 'center' }}>
-                Tap Attack to continue
-              </div>
-            )}
-            {busy && <div style={{ textAlign: 'center' }}><Spinner /></div>}
-          </div>
-        )}
-
-        {showingStanceWait && (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-            <Spinner />
-            <div style={{ ...F.mono, fontSize: 11, color: T.muted }}>Coach is deciding...</div>
-          </div>
-        )}
-
-        {/* MOVE PICK */}
-        {showingMovePick && (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            {/* Stance reveal */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, padding: '6px 18px', borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
-              {[['You', myStanceVal], ['Coach', oppStanceVal]].map(([who, stance], idx) => (
-                <React.Fragment key={who}>
-                  {idx === 1 && <span style={{ ...F.mono, fontSize: 8, color: T.dim }}>vs</span>}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <StanceIcon stance={stance} size={12} />
-                    <span style={{ ...F.mono, fontSize: 8, color: T.dim }}>{who}</span>
-                    <span style={{ ...F.mono, fontSize: 9, padding: '2px 6px', borderRadius: 3, fontWeight: 600, textTransform: 'uppercase',
-                      background: stance === 'attack' ? T.red + '18' : stance === 'setup' ? T.blue + '14' : T.muted + '18',
-                      color: stance === 'attack' ? T.red : stance === 'setup' ? T.blue : T.muted,
-                    }}>{stance === 'attack' ? 'ATK' : stance === 'defend' ? 'DEF' : 'SET'}</span>
-                  </div>
-                </React.Fragment>
-              ))}
-            </div>
-
-            {/* State 3: Zero moves — Survive + Spaz desperation */}
-            {zeroMoves && (
-              <div style={{ flex: 1, overflowY: 'auto', padding: '6px 18px 0', minHeight: 0 }}>
-                <div style={{ textAlign: 'center', marginBottom: 12 }}>
-                  <div style={{ ...F.display, fontSize: 20, color: T.text }}>No Moves Available</div>
-                  <div style={{ ...F.mono, fontSize: 10, color: T.dim, marginTop: 4 }}>Choose a last-resort option</div>
-                </div>
-                {universalMoves.map(u => {
-                  const isSurvive = u.id === 'survive';
-                  const canAfford = myGp >= u.gp_cost;
-                  const isSel = sel?.id === u.id;
-                  const borderColor = isSurvive ? '#457B9D' : '#E63946';
-                  return (
-                    <div key={u.id} onClick={() => canAfford && setSel({ id: u.id, is_universal: true })}
-                      style={{
-                        padding: '14px 14px', borderRadius: 10, marginBottom: 8, cursor: canAfford ? 'pointer' : 'default',
-                        opacity: canAfford ? 1 : 0.35, transition: 'all 0.15s',
-                        border: `2px dashed ${isSel ? borderColor : borderColor + '60'}`,
-                        background: isSel ? borderColor + '12' : T.surface + '80',
-                      }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-                        <span style={{ fontSize: 20 }}>{isSurvive ? '\u{1F6E1}' : '\u{1F4A5}'}</span>
-                        <span style={{ ...F.display, fontSize: 16, color: T.text }}>{u.name}</span>
-                        {isSel && <div style={{ width: 14, height: 14, borderRadius: '50%', background: borderColor, display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: 'auto' }}>
-                          <svg viewBox="0 0 12 12" width={7} height={7}><path d="M2 6L5 9L10 3" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                        </div>}
-                      </div>
-                      <div style={{ ...F.mono, fontSize: 10, color: T.muted, marginBottom: 4 }}>{u.description}</div>
-                      <div style={{ ...F.mono, fontSize: 9, color: isSurvive ? '#457B9D' : (canAfford ? '#E63946' : T.dim) }}>
-                        {isSurvive ? '0 GP \u2022 +1 recovery' : canAfford ? '3 GP \u2022 CHECKMATE RISK' : 'Not enough GP'}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* States 1 & 2: Normal hand (+ survive at bottom when GP < 3) */}
-            {!zeroMoves && (
-              <div style={{ flex: 1, overflowY: 'auto', padding: '6px 18px 0', minHeight: 0, position: 'relative' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-                  <span style={{ ...F.mono, fontSize: 9, color: T.muted, textTransform: 'uppercase' }}>Your Hand</span>
-                  <span style={{ ...F.mono, fontSize: 9, color: T.dim }}>{moves.length} moves</span>
-                </div>
-
-                {moves.map((m, idx) => {
-                  const tier = deckTiers[m.id] || 'trained';
-                  const effGP = getEffGP(m);
-                  const canAfford = myGp >= effGP;
-                  const isSel = sel?.id === m.id && !sel?.isCounter;
-                  const td = TierDisplay[tier] || TierDisplay.trained;
-                  const typeColor = MTColors[m.type] || T.muted;
-
-                  return (
-                    <div key={m.id} onClick={() => canAfford && setSel({ id: m.id, isCounter: false })} style={{
-                      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, marginBottom: 4,
-                      cursor: canAfford ? 'pointer' : 'default', opacity: canAfford ? 1 : 0.3, transition: 'all 0.15s',
-                      position: 'relative', overflow: 'hidden',
-                      border: `1px solid ${isSel ? typeColor : tier === 'drilled' ? T.gold + '40' : T.border}`,
-                      background: isSel ? typeColor + '10' : T.surface,
-                    }}>
-                      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: isSel ? typeColor : 'transparent', opacity: 0.6 }} />
-                      <div style={{ width: 26, height: 26, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: typeColor + '14' }}>
-                        <MoveIcon type={m.type} size={16} />
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <span style={{ fontSize: 12, fontWeight: 600, fontFamily: T.body, color: isSel ? T.white : T.text }}>{m.name}</span>
-                          <span style={{ fontSize: 9, color: td.c }}>{td.sym}</span>
-                        </div>
-                        <div style={{ ...F.mono, fontSize: 8, color: T.muted, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}>
-                          <span style={{ fontSize: 7, padding: '1px 4px', borderRadius: 2, background: typeColor + '18', color: typeColor }}>{MTLabels[m.type] || 'MOVE'}</span>
-                          <span style={{ color: T.dim }}>{m.to_position ? G.positions[m.to_position]?.name?.replace(/ \(.*\)/, '') : 'SUBMISSION'}</span>
-                        </div>
-                      </div>
-                      <div style={{ textAlign: 'center', flexShrink: 0, minWidth: 32 }}>
-                        <div style={{ ...F.display, fontSize: 16, lineHeight: 1, color: tier === 'drilled' ? T.gold : T.muted }}>{effGP}</div>
-                        <div style={{ ...F.mono, fontSize: 7, color: T.dim }}>GP</div>
-                      </div>
-                      {isSel && (
-                        <div style={{ position: 'absolute', top: 6, right: 8, width: 16, height: 16, borderRadius: '50%', background: typeColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <svg viewBox="0 0 12 12" width={8} height={8}><path d="M2 6L5 9L10 3" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-
-                {/* State 2: Survive card at bottom when GP < 3 */}
-                {showSurviveExtra && (() => {
-                  const isSel = sel?.id === 'survive' && sel?.is_universal;
-                  return (
-                    <>
-                      <div style={{ height: 1, background: T.border, margin: '10px 0 8px' }} />
-                      <div onClick={() => setSel({ id: 'survive', is_universal: true })}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 6, marginBottom: 4,
-                          cursor: 'pointer', transition: 'all 0.15s',
-                          border: `1.5px dashed ${isSel ? '#457B9D' : '#457B9D60'}`,
-                          background: isSel ? '#457B9D12' : 'transparent',
-                        }}>
-                        <span style={{ fontSize: 14 }}>{'\u{1F6E1}'}</span>
-                        <span style={{ ...F.body, fontSize: 11, fontWeight: 500, color: isSel ? T.text : T.muted }}>Survive</span>
-                        <span style={{ ...F.mono, fontSize: 9, color: '#457B9D', marginLeft: 'auto' }}>Recover &bull; +1 GP</span>
-                        {isSel && <div style={{ width: 12, height: 12, borderRadius: '50%', background: '#457B9D', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <svg viewBox="0 0 12 12" width={6} height={6}><path d="M2 6L5 9L10 3" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                        </div>}
-                      </div>
-                    </>
-                  );
-                })()}
-
-              </div>
-            )}
-
-            {/* Lock button */}
-            {(
-              <div style={{ flexShrink: 0, padding: '8px 18px 28px', borderTop: `1px solid ${T.border}` }}>
-                <Btn onClick={lockMove} disabled={!sel || busy}>
-                  {busy ? <Spinner /> : sel?.is_universal ? `Lock In ${sel.id === 'survive' ? 'Survive' : 'Spaz'}` : sel ? 'Lock In Move' : 'Select a Move'}
-                </Btn>
-              </div>
-            )}
-          </div>
-        )}
-
-        {showingMoveWait && (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-            <Spinner />
-            <div style={{ ...F.mono, fontSize: 11, color: T.muted }}>Coach is choosing...</div>
-          </div>
-        )}
-
-        {phase === 'resolving' && (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Spinner size={24} />
-            <span style={{ ...F.mono, fontSize: 12, color: T.muted, marginLeft: 8 }}>Resolving...</span>
-          </div>
-        )}
-
-        {/* SUB MINIGAME */}
-        {showingSub && (() => {
-          const isAtt = match.sub_attacker_id === profile.id;
-          const subTech = G.techniques[match.sub_technique_id];
-          const myLk = isAtt ? match.sub_attacker_locked : match.sub_defender_locked;
-          const tighten = match?.sub_tighten_turns ?? 0;
-          const subRound = match?.sub_phase ?? 1;
-
-          const attOpts = [
-            { id: 'squeeze', label: 'Squeeze', desc: 'Commit fully', cost: 2, color: T.red },
-            { id: 'adjust', label: 'Adjust', desc: 'Reposition grip', cost: 1, color: T.amber },
-            { id: 'transition_sub', label: 'Chain Sub', desc: 'Switch submission', cost: 1, color: T.purple },
-          ];
-          const defOpts = [
-            { id: 'technical_escape', label: 'Tech Escape', desc: 'Strip the grip', cost: 1, color: T.teal },
-            { id: 'explode', label: 'Explode', desc: 'All-out burst', cost: 2, color: T.red },
-            { id: 'survive', label: 'Survive', desc: 'Weather the storm', cost: 0, color: T.blue },
-            { id: 'sweep_scramble', label: 'Sweep', desc: 'Escape + position', cost: 2, color: T.amber },
-            { id: 'reversal_sub', label: 'Reversal', desc: 'Counter-submission', cost: 3, color: T.gold },
-          ];
-          const opts = isAtt ? attOpts : defOpts;
-
-          return (
-            <div style={{ flex: 1, overflowY: 'auto', padding: '0 18px 100px' }}>
-              <div style={{ textAlign: 'center', margin: '12px 0', padding: 14, background: T.red + '0A', borderRadius: 10, border: `1px solid ${T.red}30` }}>
-                <div style={{ ...F.mono, fontSize: 11, color: T.red, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Submission</div>
-                <div style={{ ...F.display, fontSize: 22, color: T.text, marginTop: 2 }}>{subTech?.name || 'Submission'}</div>
-                <div style={{ ...F.mono, fontSize: 11, color: T.muted, marginTop: 4 }}>{isAtt ? 'Finish it!' : 'Escape or survive!'}</div>
-              </div>
-
-              {/* Tighten meter — animated */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 10 }}>
-                <span style={{ ...F.mono, fontSize: 8, color: T.dim, width: 50, textAlign: 'right' }}>TIGHTEN</span>
-                <div style={{ display: 'flex', gap: 3 }}>
-                  {[1, 2, 3, 4, 5].map(i => (
-                    <div key={i} style={{
-                      width: 28, height: 7, borderRadius: 3,
-                      background: i <= tighten ? T.red : T.dim + '30',
-                      transition: 'background 0.4s, box-shadow 0.4s',
-                      boxShadow: i === tighten ? `0 0 6px ${T.red}60` : 'none',
-                      animation: i === tighten ? 'meterPulse 0.6s ease-out' : 'none',
-                    }} />
-                  ))}
-                </div>
-                <span style={{ ...F.mono, fontSize: 9, color: tighten >= 4 ? T.red : T.muted, width: 30 }}>{tighten}/5</span>
-              </div>
-
-              {/* Sub choice reveal */}
-              {subReveal && (
-                <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginBottom: 12, animation: 'fadeUp 0.3s ease-out' }}>
-                  <div style={{ flex: 1, padding: '8px 10px', borderRadius: 8, textAlign: 'center',
-                    background: T.surface2, border: `1px solid ${T.border}`,
-                  }}>
-                    <div style={{ ...F.mono, fontSize: 8, color: T.muted, marginBottom: 2 }}>YOU</div>
-                    <div style={{ ...F.body, fontSize: 11, fontWeight: 600, color: T.text }}>{subReveal.myChoice?.replace('_', ' ')}</div>
-                  </div>
-                  <div style={{ ...F.mono, fontSize: 9, color: T.dim, alignSelf: 'center' }}>vs</div>
-                  <div style={{ flex: 1, padding: '8px 10px', borderRadius: 8, textAlign: 'center',
-                    background: T.surface2, border: `1px solid ${T.border}`,
-                  }}>
-                    <div style={{ ...F.mono, fontSize: 8, color: T.muted, marginBottom: 2 }}>COACH</div>
-                    <div style={{ ...F.body, fontSize: 11, fontWeight: 600, color: T.text }}>{subReveal.oppChoice?.replace('_', ' ')}</div>
-                  </div>
-                </div>
-              )}
-
-              {/* Round indicators */}
-              <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 14 }}>
-                {[1, 2, 3].map(r => (
-                  <div key={r} style={{
-                    width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 10, fontWeight: 600, fontFamily: T.mono,
-                    background: r < subRound ? T.red : 'transparent',
-                    border: `1.5px solid ${r <= subRound ? T.red : T.dim}`,
-                    color: r < subRound ? '#fff' : r === subRound ? T.text : T.dim,
-                  }}>{r}</div>
-                ))}
-              </div>
-
-              {!myLk && opts.map(o => {
-                const oSel = subSel === o.id;
-                return (
-                  <div key={o.id} onClick={() => myGp >= o.cost && setSubSel(o.id)} style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '12px 14px', marginBottom: 5, borderRadius: 8, cursor: myGp >= o.cost ? 'pointer' : 'default',
-                    opacity: myGp >= o.cost ? 1 : 0.35,
-                    background: oSel ? o.color + '10' : T.surface,
-                    border: `1px solid ${oSel ? o.color : T.border}`,
-                    borderLeft: `3px solid ${oSel ? o.color : T.border}`,
-                  }}>
-                    <div>
-                      <div style={{ ...F.body, fontSize: 13, fontWeight: 600, color: oSel ? T.text : T.muted }}>{o.label}</div>
-                      <div style={{ ...F.mono, fontSize: 10, color: T.dim }}>{o.desc}</div>
-                    </div>
-                    <span style={{ ...F.mono, fontSize: 10, color: T.amber, fontWeight: 700 }}>{o.cost}GP</span>
-                  </div>
-                );
-              })}
-
-              {myLk && <div style={{ textAlign: 'center', padding: 20 }}><Spinner /><div style={{ ...F.mono, fontSize: 11, color: T.muted, marginTop: 8 }}>Locked -- waiting...</div></div>}
-
-              {!myLk && (
-                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '10px 18px 28px', background: `linear-gradient(180deg, transparent 0%, ${T.bg} 40%)` }}>
-                  <Btn onClick={lockSubChoice} disabled={!subSel || busy} style={{ background: subSel ? `linear-gradient(135deg, ${T.red}, #c0392b)` : undefined }}>
-                    {busy ? <Spinner /> : subSel ? 'Lock In' : 'Select an Option'}
-                  </Btn>
-                </div>
-              )}
-            </div>
-          );
-        })()}
-
-        {match.status === 'finished' && !showReveal && step !== STEPS.FINISH && (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8 }}>
-            <div style={{ ...F.display, fontSize: 18, color: T.text }}>Match Complete</div>
-            <Spinner />
-          </div>
-        )}
-      </div>
-
-      {/* ═══ REVEAL OVERLAY ═══ */}
-      {showReveal && revealData && (
-        <div onClick={dismissReveal} style={{ position: 'absolute', inset: 0, zIndex: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: T.bg, cursor: 'pointer' }}>
-          <div style={{ position: 'absolute', inset: 0, backgroundImage: `linear-gradient(${T.border} 1px, transparent 1px), linear-gradient(90deg, ${T.border} 1px, transparent 1px)`, backgroundSize: '20px 20px', opacity: 0.1 }} />
-          <div style={{ ...F.mono, fontSize: 9, letterSpacing: '0.2em', color: T.muted, textTransform: 'uppercase', marginBottom: 20, zIndex: 2 }}>Turn {revealData.turn} -- Reveal</div>
-
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 20, zIndex: 2 }}>
-            {/* Your card */}
-            <div style={{ width: 120, height: 145, perspective: 700 }}>
-              <div style={{ width: '100%', height: '100%', position: 'relative', transformStyle: 'preserve-3d', transition: 'transform 0.6s cubic-bezier(0.4,0,0.2,1)', transform: yourFlipped ? 'rotateY(180deg)' : 'none' }}>
-                <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', borderRadius: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, background: T.surface2, border: `1px solid ${T.border}` }}>
-                  <div style={{ ...F.display, fontSize: 10, color: T.borderB }}>OPEN MAT</div>
-                </div>
-                <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', transform: 'rotateY(180deg)', borderRadius: 6, display: 'flex', flexDirection: 'column', padding: 12, background: '#2a0810', border: `1px solid ${T.red}` }}>
-                  <div style={{ ...F.mono, fontSize: 8, color: T.red, textTransform: 'uppercase', marginBottom: 4 }}>You played</div>
-                  <div style={{ ...F.mono, fontSize: 7, padding: '2px 5px', border: `1px solid ${T.red}`, borderRadius: 2, color: T.red, textTransform: 'uppercase', alignSelf: 'flex-start', marginBottom: 8 }}>{MTLabels[revealData?.myMoveType] || 'MOVE'}</div>
-                  <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-                    <div style={{ ...F.display, fontSize: 18, color: '#fff', lineHeight: 1.1 }}>{revealData?.myMoveName || 'Your Move'}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ ...F.display, fontSize: 11, color: T.dim, zIndex: 2 }}>VS</div>
-
-            {/* Coach card */}
-            <div style={{ width: 120, height: 145, perspective: 700 }}>
-              <div style={{ width: '100%', height: '100%', position: 'relative', transformStyle: 'preserve-3d', transition: 'transform 0.6s cubic-bezier(0.4,0,0.2,1)', transform: oppFlipped ? 'rotateY(180deg)' : 'none' }}>
-                <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', borderRadius: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, background: T.surface2, border: `1px solid ${T.border}` }}>
-                  <div style={{ ...F.display, fontSize: 10, color: T.borderB }}>OPEN MAT</div>
-                </div>
-                <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', transform: 'rotateY(180deg)', borderRadius: 6, display: 'flex', flexDirection: 'column', padding: 12, background: '#050d1a', border: `1px solid ${T.blue}` }}>
-                  <div style={{ ...F.mono, fontSize: 8, color: T.blue, textTransform: 'uppercase', marginBottom: 4 }}>Coach played</div>
-                  <div style={{ ...F.mono, fontSize: 7, padding: '2px 5px', border: `1px solid ${T.blue}`, borderRadius: 2, color: T.blue, textTransform: 'uppercase', alignSelf: 'flex-start', marginBottom: 6 }}>{revealData?.oppMoveType ? (MTLabels[revealData.oppMoveType] || 'MOVE') : 'MOVE'}</div>
-                  <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-                    <div style={{ ...F.display, fontSize: 16, color: '#7aaee0', lineHeight: 1.1 }}>{revealData?.oppMoveName || 'Coach'}</div>
-                  </div>
-                  <div style={{ ...F.mono, fontSize: 8, color: T.muted }}>Coach</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ zIndex: 2, textAlign: 'center', opacity: showResult ? 1 : 0, transform: showResult ? 'translateY(0)' : 'translateY(12px)', transition: 'opacity 0.4s, transform 0.4s' }}>
-            <div style={{ ...F.display, fontSize: 24, lineHeight: 1, marginBottom: 4, color: revealData.result === 'submission_win' ? T.red : revealData.result === 'sweep' ? T.green : T.amber }}>{revealData.description}</div>
-            {currentTurn === 2 && (
-              <div style={{ ...F.mono, fontSize: 10, color: T.amber, marginTop: 8, padding: '6px 12px', background: T.amber + '10', borderRadius: 6, display: 'inline-block' }}>
-                You both chose at the same time -- this is the reveal
-              </div>
-            )}
-            <div style={{ ...F.mono, fontSize: 8, color: T.dim, marginTop: 10 }}>Tap to continue</div>
-          </div>
-        </div>
-      )}
-
-      {/* ═══ TUTORIAL OVERLAYS ═══ */}
-
-      {/* Turn 1: Stance intro */}
-      {showStanceOverlay && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 50, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: 80, background: 'rgba(0,0,0,0.75)', cursor: 'pointer' }} onClick={() => { setOverlayDismissed(true); setStep(STEPS.T1_STANCE_PICK); }}>
-          <div style={{ maxWidth: 300, textAlign: 'center', padding: '20px 24px', background: T.surface2, border: `1px solid ${T.amber}40`, borderRadius: 14 }}>
-            <div style={{ ...F.display, fontSize: 22, color: T.text, marginBottom: 8 }}>Every Turn Starts Here</div>
-            <div style={{ ...F.mono, fontSize: 11, color: T.muted, lineHeight: 1.6 }}>
-              Choose your approach for this turn. Each stance changes what moves you can play and how much energy you spend.
-            </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'center' }}>
-              <div style={{ textAlign: 'center' }}>
-                <StanceIcon stance="attack" size={20} />
-                <div style={{ ...F.mono, fontSize: 8, color: T.red, marginTop: 2 }}>Offense</div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <StanceIcon stance="defend" size={20} />
-                <div style={{ ...F.mono, fontSize: 8, color: T.blue, marginTop: 2 }}>Counters</div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <StanceIcon stance="setup" size={20} />
-                <div style={{ ...F.mono, fontSize: 8, color: T.amber, marginTop: 2 }}>Recovery</div>
-              </div>
-            </div>
-            <div style={{ ...F.mono, fontSize: 9, color: T.dim, marginTop: 12 }}>Tap to continue</div>
-          </div>
-        </div>
-      )}
-
-      {/* Turn 2: Move intro */}
-      {showMoveOverlay && showingMovePick && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 140, background: 'rgba(0,0,0,0.7)', cursor: 'pointer' }} onClick={() => { setOverlayDismissed(true); setStep(STEPS.T2_MOVE_PICK); }}>
-          <div style={{ maxWidth: 300, textAlign: 'center', padding: '20px 24px', background: T.surface2, border: `1px solid ${T.amber}40`, borderRadius: 14 }}>
-            <div style={{ ...F.display, fontSize: 22, color: T.text, marginBottom: 8 }}>Pick a Move</div>
-            <div style={{ ...F.mono, fontSize: 11, color: T.muted, lineHeight: 1.6 }}>
-              Each move costs GP (the green bar). Gold starred moves are your best -- they cost less and hit harder.
-            </div>
-            <div style={{ ...F.mono, fontSize: 9, color: T.dim, marginTop: 12 }}>Tap to continue</div>
-          </div>
-        </div>
-      )}
-
-      {/* Turn 3: GP intro */}
-      {showGpOverlay && showingStancePick && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 60, background: 'rgba(0,0,0,0.7)', cursor: 'pointer' }} onClick={() => { setOverlayDismissed(true); setStep(STEPS.T3_FREE); }}>
-          <div style={{ maxWidth: 300, textAlign: 'center', padding: '20px 24px', background: T.surface2, border: `1px solid ${T.amber}40`, borderRadius: 14 }}>
-            <div style={{ ...F.display, fontSize: 22, color: T.text, marginBottom: 8 }}>Watch Your Energy</div>
-            <div style={{ ...F.mono, fontSize: 11, color: T.muted, lineHeight: 1.6 }}>
-              Attack moves cost GP. Setup stance recovers it. Run out and you're stuck with no options.
-            </div>
-            <div style={{ ...F.mono, fontSize: 9, color: T.dim, marginTop: 12 }}>Tap to continue</div>
-          </div>
-        </div>
-      )}
-
-      {/* Sub minigame intro */}
-      {showSubOverlay && showingSub && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', cursor: 'pointer' }} onClick={() => { setOverlayDismissed(true); setStep(STEPS.T5_SUB_PICK); }}>
-          <div style={{ maxWidth: 300, textAlign: 'center', padding: '20px 24px', background: T.surface2, border: `1px solid ${T.red}40`, borderRadius: 14 }}>
-            <div style={{ ...F.display, fontSize: 22, color: T.red, marginBottom: 8 }}>You're Caught!</div>
-            <div style={{ ...F.mono, fontSize: 11, color: T.muted, lineHeight: 1.6 }}>
-              When a submission lands, it becomes a minigame. Choose how to defend each round. The meter shows how deep the sub is.
-            </div>
-            <div style={{ ...F.mono, fontSize: 9, color: T.dim, marginTop: 12 }}>Tap to continue</div>
-          </div>
-        </div>
-      )}
-
-      {/* Scripted sub fallback — if no real sub triggered by turn 5 */}
-      {subFallbackShown && !subEverTriggeredRef.current && step !== STEPS.FINISH && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.8)', cursor: 'pointer' }} onClick={() => setSubFallbackShown(false)}>
-          <div style={{ maxWidth: 320, textAlign: 'center', padding: '24px 28px', background: T.surface2, border: `1px solid ${T.red}40`, borderRadius: 14 }}>
-            <svg viewBox="0 0 48 48" width={40} height={40} fill="none" style={{ marginBottom: 10 }}>
-              <circle cx="24" cy="24" r="20" stroke={T.red} strokeWidth="2" fill={T.red + '10'} />
-              <path d="M16 16L32 32M32 16L16 32" stroke={T.red} strokeWidth="2.5" strokeLinecap="round" />
-            </svg>
-            <div style={{ ...F.display, fontSize: 22, color: T.red, marginBottom: 8 }}>About Submissions</div>
-            <div style={{ ...F.mono, fontSize: 11, color: T.muted, lineHeight: 1.7 }}>
-              When a submission technique lands, it triggers a minigame. The attacker tries to tighten the hold while the defender picks escape options.
-            </div>
-            <div style={{ ...F.mono, fontSize: 11, color: T.muted, lineHeight: 1.7, marginTop: 10 }}>
-              A tighten meter tracks progress. At 5/5, it's a tap! Defenders can escape, explode out, or even reverse.
-            </div>
-            <div style={{ display: 'flex', gap: 3, justifyContent: 'center', marginTop: 12 }}>
-              {[1, 2, 3, 4, 5].map(i => (
-                <div key={i} style={{ width: 28, height: 7, borderRadius: 3, background: i <= 3 ? T.red : T.dim + '30' }} />
-              ))}
-            </div>
-            <div style={{ ...F.mono, fontSize: 8, color: T.dim, marginTop: 4 }}>Tighten meter example (3/5)</div>
-            <div style={{ ...F.mono, fontSize: 9, color: T.dim, marginTop: 14 }}>Tap to continue playing</div>
-          </div>
-        </div>
-      )}
-
-      {/* ═══ TAP OVERLAY ═══ */}
-      {tapOverlay && (
-        <div style={{
-          position: 'absolute', inset: 0, zIndex: 100,
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          background: tapOverlay.won ? '#D4603A' : '#E63946',
-          animation: 'tapShake 0.4s ease-out',
-        }}>
-          <div style={{
-            ...F.display, fontSize: 72, fontWeight: 900, color: '#fff',
-            lineHeight: 1, letterSpacing: '0.05em',
-            animation: 'tapBounce 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-            textShadow: '0 4px 20px rgba(0,0,0,0.4)',
-          }}>TAP!</div>
-          <div style={{
-            ...F.display, fontSize: 20, color: 'rgba(255,255,255,0.9)',
-            marginTop: 16, textAlign: 'center',
-          }}>{tapOverlay.subName}</div>
-          <div style={{
-            ...F.mono, fontSize: 13, color: 'rgba(255,255,255,0.7)',
-            marginTop: 12, textTransform: 'uppercase', letterSpacing: '0.1em',
-          }}>{tapOverlay.won ? 'Submission Victory!' : 'You got tapped'}</div>
-          <div style={{
-            ...F.mono, fontSize: 11, color: 'rgba(255,255,255,0.5)',
-            marginTop: 8,
-          }}>{tapOverlay.winnerName} wins</div>
-        </div>
-      )}
-
-      {/* ═══ ESCAPED OVERLAY ═══ */}
-      {subEscaped && (
-        <div style={{
-          position: 'absolute', inset: 0, zIndex: 99,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'rgba(0,0,0,0.7)',
-          animation: 'fadeUp 0.3s ease-out',
-          pointerEvents: 'none',
-        }}>
-          <div style={{
-            fontFamily: T.display, fontSize: 56, fontWeight: 900, color: '#2A9D8F',
-            letterSpacing: '0.06em', lineHeight: 1,
-            animation: 'escapeBurst 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-            textShadow: '0 0 30px #2A9D8F60, 0 4px 20px rgba(0,0,0,0.4)',
-          }}>ESCAPED!</div>
-        </div>
-      )}
-
-      {/* ═══ KEYFRAMES ═══ */}
-      <style>{`
-        @keyframes pulseOut { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(2.4); opacity: 0; } }
-        @keyframes tutPulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
-        @keyframes shimmer { 0%, 100% { opacity: 1; filter: brightness(1); } 50% { opacity: 0.85; filter: brightness(1.3); } }
-        @keyframes tapBounce { 0% { transform: scale(0); opacity: 0; } 50% { transform: scale(1.15); } 100% { transform: scale(1); opacity: 1; } }
-        @keyframes tapShake { 0% { transform: translateX(0); } 15% { transform: translateX(-6px); } 30% { transform: translateX(5px); } 45% { transform: translateX(-4px); } 60% { transform: translateX(3px); } 75% { transform: translateX(-1px); } 100% { transform: translateX(0); } }
-        @keyframes fadeUp { 0% { opacity: 0; transform: translateY(8px); } 100% { opacity: 1; transform: translateY(0); } }
-        @keyframes meterPulse { 0% { transform: scaleY(1); } 30% { transform: scaleY(1.8); } 100% { transform: scaleY(1); } }
-        @keyframes escapeBurst { 0% { transform: scale(0); opacity: 0; } 50% { transform: scale(1.2); } 100% { transform: scale(1); opacity: 1; } }
-      `}</style>
+  // Shared wrapper
+  const Wrap = ({ children }) => (
+    <div style={{ padding: '20px 16px', flex: 1, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto' }}>
+      {children}
     </div>
   );
+
+  // ── INTRO ───────────────────────────────────────────────
+  if (phase === 'INTRO') {
+    return (
+      <Wrap>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', gap: 20 }}>
+          {/* Coach avatar */}
+          <div style={{
+            width: 80, height: 80, borderRadius: '50%', background: `${T.coach}15`,
+            border: `2px solid ${T.coach}40`, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            animation: 'coachPulse 2s ease-in-out infinite',
+          }}>
+            <span style={{ fontFamily: T.display, fontSize: 32, color: T.coach }}>M</span>
+          </div>
+          <div>
+            <div style={{ fontFamily: T.display, fontSize: 28, color: T.white, letterSpacing: '0.06em', marginBottom: 8 }}>Welcome to the mat.</div>
+            <div style={{ fontFamily: T.display, fontSize: 28, color: T.coach, letterSpacing: '0.06em' }}>I'm Coach Mike.</div>
+          </div>
+          <div style={{ fontFamily: T.body, fontSize: 14, color: T.muted, lineHeight: 1.6, maxWidth: 280 }}>
+            I'm going to show you how this works. 3 turns. Let's go.
+          </div>
+          <Btn onClick={() => setPhase('TURN_1_STANCE')}>Step on the mat</Btn>
+        </div>
+      </Wrap>
+    );
+  }
+
+  // ── TURN 1 STANCE ───────────────────────────────────────
+  if (phase === 'TURN_1_STANCE') {
+    return (
+      <Wrap>
+        <div style={{ fontFamily: T.mono, fontSize: 10, color: T.dim, letterSpacing: '0.12em', textTransform: 'uppercase' }}>TURN 1</div>
+        <PositionDisplay playerPos={playerPosition} coachPos={coachPosition} />
+        <GPDisplay playerGP={playerGP} coachGP={coachGP} />
+
+        <Coach message="Every turn, you pick a stance. Your stance determines what move you use — and how it clashes with mine." />
+
+        {/* Coach's hidden stance */}
+        <div style={{ padding: '10px 14px', background: T.surface2, border: `1px solid ${T.border}`, borderRadius: 6, textAlign: 'center' }}>
+          <span style={{ fontFamily: T.mono, fontSize: 11, color: T.dim }}>Coach Mike chose: </span>
+          <span style={{ fontFamily: T.display, fontSize: 18, color: T.muted, letterSpacing: '0.06em' }}>???</span>
+        </div>
+
+        {/* Stance cards */}
+        <div style={{ fontFamily: T.mono, fontSize: 10, color: T.dim, letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: 4 }}>CHOOSE YOUR STANCE</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {turn1Stances.map(s => (
+            <StanceCard key={s.stance} {...s} selected={selectedStance} onClick={resolveTurn1} />
+          ))}
+        </div>
+      </Wrap>
+    );
+  }
+
+  // ── TURN 1 RESOLVE ──────────────────────────────────────
+  if (phase === 'TURN_1_RESOLVE') {
+    const o = getTurn1Outcome();
+    const newPGP = Math.max(0, playerGP + o.pGP);
+    const newCGP = Math.max(0, coachGP + o.cGP);
+    return (
+      <Wrap>
+        <div style={{ fontFamily: T.mono, fontSize: 10, color: T.dim, letterSpacing: '0.12em', textTransform: 'uppercase' }}>TURN 1 — RESULT</div>
+
+        {/* Coach reveal */}
+        <div style={{
+          padding: '12px 16px', background: `${T.red}0A`, border: `1px solid ${T.red}30`, borderRadius: 6,
+          animation: 'flipIn 0.5s ease-out both', textAlign: 'center',
+        }}>
+          <div style={{ fontFamily: T.mono, fontSize: 9, color: T.dim, letterSpacing: '0.1em', marginBottom: 4 }}>COACH MIKE'S MOVE</div>
+          <div style={{ fontFamily: T.display, fontSize: 20, color: T.red, letterSpacing: '0.04em' }}>⚔️ Attack — Double Leg Takedown</div>
+        </div>
+
+        {/* Your stance */}
+        <div style={{
+          padding: '12px 16px', background: `${STANCE_C[turn1Result]}0A`, border: `1px solid ${STANCE_C[turn1Result]}30`, borderRadius: 6, textAlign: 'center',
+        }}>
+          <div style={{ fontFamily: T.mono, fontSize: 9, color: T.dim, letterSpacing: '0.1em', marginBottom: 4 }}>YOUR MOVE</div>
+          <div style={{ fontFamily: T.display, fontSize: 20, color: STANCE_C[turn1Result], letterSpacing: '0.04em' }}>
+            {STANCE_ICON[turn1Result]} {turn1Result.charAt(0).toUpperCase() + turn1Result.slice(1)} — {turn1Stances.find(s => s.stance === turn1Result).moveName}
+          </div>
+        </div>
+
+        {/* Outcome */}
+        <div style={{ fontFamily: T.body, fontSize: 14, color: T.text, lineHeight: 1.6, padding: '8px 0' }}>{o.text}</div>
+
+        {/* Stance lesson */}
+        <div style={{
+          padding: '10px 14px', borderRadius: 6, fontFamily: T.mono, fontSize: 13, fontWeight: 600, textAlign: 'center',
+          background: o.lessonType === 'win' ? `${T.gold}15` : o.lessonType === 'lose' ? `${T.red}15` : `${T.muted}10`,
+          color: o.lessonType === 'win' ? T.gold : o.lessonType === 'lose' ? T.red : T.muted,
+          border: `1px solid ${o.lessonType === 'win' ? T.gold : o.lessonType === 'lose' ? T.red : T.dim}30`,
+        }}>{o.lesson}</div>
+
+        {/* New positions */}
+        <PositionDisplay playerPos={o.pPos} coachPos={o.cPos} />
+
+        {/* GP changes */}
+        <GPDisplay playerGP={newPGP} coachGP={newCGP} />
+
+        <Btn full onClick={() => {
+          const oc = getTurn1Outcome();
+          setPlayerPosition(oc.pPos);
+          setCoachPosition(oc.cPos);
+          setPlayerGP(prev => Math.max(0, prev + oc.pGP));
+          setCoachGP(prev => Math.max(0, prev + oc.cGP));
+          setSelectedStance(null);
+          setPhase('TURN_2_STANCE');
+        }}>Next Turn →</Btn>
+      </Wrap>
+    );
+  }
+
+  // ── TURN 2 STANCE ───────────────────────────────────────
+  if (phase === 'TURN_2_STANCE') {
+    const cfg = getTurn2Config();
+    return (
+      <Wrap>
+        <div style={{ fontFamily: T.mono, fontSize: 10, color: T.dim, letterSpacing: '0.12em', textTransform: 'uppercase' }}>TURN 2</div>
+        <PositionDisplay playerPos={playerPosition} coachPos={coachPosition} />
+        <GPDisplay playerGP={playerGP} coachGP={coachGP} />
+
+        <Coach message="Same idea — pick your stance. But notice: your position changed. Different position, different moves." />
+
+        <div style={{ padding: '10px 14px', background: T.surface2, border: `1px solid ${T.border}`, borderRadius: 6, textAlign: 'center' }}>
+          <span style={{ fontFamily: T.mono, fontSize: 11, color: T.dim }}>Coach Mike chose: </span>
+          <span style={{ fontFamily: T.display, fontSize: 18, color: T.muted, letterSpacing: '0.06em' }}>???</span>
+        </div>
+
+        <div style={{ fontFamily: T.mono, fontSize: 10, color: T.dim, letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: 4 }}>CHOOSE YOUR STANCE</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {cfg.stances.map(s => (
+            <StanceCard key={s.stance} {...s} selected={selectedStance} onClick={resolveTurn2} />
+          ))}
+        </div>
+      </Wrap>
+    );
+  }
+
+  // ── TURN 2 RESOLVE ──────────────────────────────────────
+  if (phase === 'TURN_2_RESOLVE') {
+    const cfg = getTurn2Config();
+    const o = cfg.outcomes[selectedStance];
+    return (
+      <Wrap>
+        <div style={{ fontFamily: T.mono, fontSize: 10, color: T.dim, letterSpacing: '0.12em', textTransform: 'uppercase' }}>TURN 2 — RESULT</div>
+
+        {/* Coach reveal */}
+        <div style={{
+          padding: '12px 16px', background: `${STANCE_C[cfg.coachStance]}0A`, border: `1px solid ${STANCE_C[cfg.coachStance]}30`, borderRadius: 6,
+          animation: 'flipIn 0.5s ease-out both', textAlign: 'center',
+        }}>
+          <div style={{ fontFamily: T.mono, fontSize: 9, color: T.dim, letterSpacing: '0.1em', marginBottom: 4 }}>COACH MIKE'S MOVE</div>
+          <div style={{ fontFamily: T.display, fontSize: 20, color: STANCE_C[cfg.coachStance], letterSpacing: '0.04em' }}>
+            {STANCE_ICON[cfg.coachStance]} {cfg.coachStance.charAt(0).toUpperCase() + cfg.coachStance.slice(1)} — {cfg.coachMove}
+          </div>
+        </div>
+
+        {/* Your stance */}
+        <div style={{
+          padding: '12px 16px', background: `${STANCE_C[selectedStance]}0A`, border: `1px solid ${STANCE_C[selectedStance]}30`, borderRadius: 6, textAlign: 'center',
+        }}>
+          <div style={{ fontFamily: T.mono, fontSize: 9, color: T.dim, letterSpacing: '0.1em', marginBottom: 4 }}>YOUR MOVE</div>
+          <div style={{ fontFamily: T.display, fontSize: 20, color: STANCE_C[selectedStance], letterSpacing: '0.04em' }}>
+            {STANCE_ICON[selectedStance]} {selectedStance.charAt(0).toUpperCase() + selectedStance.slice(1)} — {cfg.stances.find(s => s.stance === selectedStance).moveName}
+          </div>
+        </div>
+
+        <div style={{ fontFamily: T.body, fontSize: 14, color: T.text, lineHeight: 1.6, padding: '8px 0' }}>{o.text}</div>
+
+        <div style={{
+          padding: '10px 14px', borderRadius: 6, fontFamily: T.mono, fontSize: 13, fontWeight: 600, textAlign: 'center',
+          background: o.lessonType === 'win' ? `${T.gold}15` : o.lessonType === 'lose' ? `${T.red}15` : `${T.muted}10`,
+          color: o.lessonType === 'win' ? T.gold : o.lessonType === 'lose' ? T.red : T.muted,
+          border: `1px solid ${o.lessonType === 'win' ? T.gold : o.lessonType === 'lose' ? T.red : T.dim}30`,
+        }}>{o.lesson}</div>
+
+        <PositionDisplay playerPos="side_control_bottom" coachPos="side_control_top" />
+        <GPDisplay playerGP={playerGP} coachGP={coachGP} />
+
+        <Btn full onClick={() => {
+          setPhase('TURN_2_TRANSITION');
+        }}>Continue</Btn>
+      </Wrap>
+    );
+  }
+
+  // ── TURN 2 TRANSITION ───────────────────────────────────
+  if (phase === 'TURN_2_TRANSITION') {
+    return (
+      <Wrap>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', gap: 16 }}>
+          <PositionDisplay playerPos="side_control_bottom" coachPos="side_control_top" />
+          <div style={{ fontFamily: T.display, fontSize: 22, color: T.white, letterSpacing: '0.04em' }}>Coach has side control.</div>
+          <div style={{ fontFamily: T.body, fontSize: 14, color: T.muted }}>He's setting up something...</div>
+        </div>
+      </Wrap>
+    );
+  }
+
+  // ── TURN 3 SUB INTRO ───────────────────────────────────
+  if (phase === 'TURN_3_SUB_INTRO') {
+    return (
+      <Wrap>
+        <div style={{ fontFamily: T.mono, fontSize: 10, color: T.dim, letterSpacing: '0.12em', textTransform: 'uppercase' }}>TURN 3 — SUBMISSION</div>
+        <PositionDisplay playerPos="side_control_bottom" coachPos="side_control_top" />
+        <GPDisplay playerGP={playerGP} coachGP={coachGP} />
+
+        <Coach message="Coach locks up a Kimura on your arm." sub="This is a submission. If it gets tight enough — you tap." />
+
+        <TightenMeter level={1} />
+
+        <div style={{ fontFamily: T.body, fontSize: 13, color: T.text, marginTop: 4 }}>You have two options:</div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ flex: 1, padding: '14px', background: `${T.blue}0A`, border: `1px solid ${T.blue}25`, borderRadius: 6, textAlign: 'center' }}>
+            <div style={{ fontSize: 20, marginBottom: 6 }}>🛡️</div>
+            <div style={{ fontFamily: T.display, fontSize: 16, color: T.blue, letterSpacing: '0.04em' }}>Survive</div>
+            <div style={{ fontFamily: T.body, fontSize: 11, color: T.dim, marginTop: 4, lineHeight: 1.4 }}>Hold on. Costs nothing. Buys time. But the grip gets tighter.</div>
+          </div>
+          <div style={{ flex: 1, padding: '14px', background: `${T.red}0A`, border: `1px solid ${T.red}25`, borderRadius: 6, textAlign: 'center' }}>
+            <div style={{ fontSize: 20, marginBottom: 6 }}>💥</div>
+            <div style={{ fontFamily: T.display, fontSize: 16, color: T.red, letterSpacing: '0.04em' }}>Explode</div>
+            <div style={{ fontFamily: T.body, fontSize: 11, color: T.dim, marginTop: 4, lineHeight: 1.4 }}>Burn 3 GP to fight out. Might work — might not.</div>
+          </div>
+        </div>
+
+        <Btn full onClick={() => setPhase('SUB_ROUND_1')}>Defend the Kimura</Btn>
+      </Wrap>
+    );
+  }
+
+  // ── SUB ROUNDS ──────────────────────────────────────────
+  if (phase === 'SUB_ROUND_1' || phase === 'SUB_ROUND_2' || phase === 'SUB_ROUND_3') {
+    const roundNum = phase === 'SUB_ROUND_1' ? 1 : phase === 'SUB_ROUND_2' ? 2 : 3;
+    const coachAction = roundNum === 3 ? 'SQUEEZE — this is it' : roundNum === 2 ? 'SQUEEZE — grip getting tighter' : 'SQUEEZE — tightening the Kimura';
+    const prevMsg = getSubCoachMsg(roundNum - 1);
+    const canExplode = playerGP >= 3;
+
+    return (
+      <Wrap>
+        <div style={{ fontFamily: T.mono, fontSize: 10, color: T.dim, letterSpacing: '0.12em', textTransform: 'uppercase' }}>KIMURA — ROUND {roundNum}/3</div>
+        <PositionDisplay playerPos="side_control_bottom" coachPos="side_control_top" />
+        <GPDisplay playerGP={playerGP} coachGP={coachGP} />
+
+        <TightenMeter level={tightenMeter} />
+
+        {prevMsg && <Coach message={prevMsg} />}
+
+        <div style={{
+          padding: '10px 14px', background: `${T.red}0A`, border: `1px solid ${T.red}25`, borderRadius: 6,
+          fontFamily: T.mono, fontSize: 12, color: T.red, textAlign: 'center',
+        }}>
+          Coach: <strong>{coachAction}</strong>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={() => handleSubChoice('survive')} style={{
+            flex: 1, padding: '16px', background: `${T.blue}0A`, border: `2px solid ${T.blue}40`, borderRadius: 6,
+            cursor: 'pointer', textAlign: 'center',
+          }}>
+            <div style={{ fontSize: 20, marginBottom: 4 }}>🛡️</div>
+            <div style={{ fontFamily: T.display, fontSize: 18, color: T.blue }}>Survive</div>
+            <div style={{ fontFamily: T.mono, fontSize: 10, color: T.dim, marginTop: 4 }}>0 GP</div>
+          </button>
+
+          <button onClick={() => canExplode && handleSubChoice('explode')} disabled={!canExplode} style={{
+            flex: 1, padding: '16px', background: canExplode ? `${T.red}0A` : T.surface2, border: `2px solid ${canExplode ? T.red + '40' : T.border}`,
+            borderRadius: 6, cursor: canExplode ? 'pointer' : 'default', textAlign: 'center', opacity: canExplode ? 1 : 0.4,
+          }}>
+            <div style={{ fontSize: 20, marginBottom: 4 }}>💥</div>
+            <div style={{ fontFamily: T.display, fontSize: 18, color: canExplode ? T.red : T.dim }}>Explode</div>
+            <div style={{ fontFamily: T.mono, fontSize: 10, color: T.dim, marginTop: 4 }}>
+              {canExplode ? '3 GP' : 'Not enough GP'}
+            </div>
+          </button>
+        </div>
+      </Wrap>
+    );
+  }
+
+  // ── TAP ─────────────────────────────────────────────────
+  if (phase === 'TAP') {
+    if (showTap && !tapMessageVisible) {
+      // Full-screen TAP overlay
+      return (
+        <div style={{
+          position: 'fixed', inset: 0, background: T.red, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 9999, animation: 'shakeX 0.5s ease-in-out',
+        }}>
+          <div style={{
+            fontFamily: T.display, fontSize: 80, color: '#fff', letterSpacing: '0.12em',
+            animation: 'subPulse 0.6s ease-in-out infinite',
+          }}>TAP!</div>
+        </div>
+      );
+    }
+
+    if (tapMessageVisible) {
+      const msg = getTapMessage();
+      return (
+        <Wrap>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 16 }}>
+            <div style={{
+              textAlign: 'center', fontFamily: T.display, fontSize: 32, color: T.red, letterSpacing: '0.06em',
+              marginBottom: 8,
+            }}>TAP</div>
+
+            <div style={{
+              padding: '16px', background: `${T.coach}0A`, border: `1px solid ${T.coach}25`, borderRadius: 6,
+            }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <div style={{
+                  width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+                  background: `${T.coach}15`, border: `1px solid ${T.coach}35`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontFamily: T.mono, fontSize: 12, color: T.coach, fontWeight: 700,
+                }}>C</div>
+                <div style={{ fontFamily: T.body, fontSize: 13, color: T.text, lineHeight: 1.7, whiteSpace: 'pre-line' }}>{msg}</div>
+              </div>
+            </div>
+
+            <Btn full onClick={() => setPhase('WHAT_YOU_LEARNED')}>What did I learn?</Btn>
+          </div>
+        </Wrap>
+      );
+    }
+
+    // Meter filling animation before TAP
+    return (
+      <Wrap>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 16 }}>
+          <TightenMeter level={5} />
+          <div style={{ fontFamily: T.display, fontSize: 24, color: T.red, animation: 'tightenPulse 0.5s ease-in-out infinite' }}>CAUGHT!</div>
+        </div>
+      </Wrap>
+    );
+  }
+
+  // ── WHAT YOU LEARNED ────────────────────────────────────
+  if (phase === 'WHAT_YOU_LEARNED') {
+    return (
+      <Wrap>
+        <div style={{ fontFamily: T.display, fontSize: 28, color: T.white, letterSpacing: '0.06em', textAlign: 'center', marginBottom: 4 }}>What You Learned</div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <LessonCard
+            icon="⚔️🛡️⚙️"
+            title="The Stance Triangle"
+            text="Attack beats Setup. Defend beats Attack. Setup beats Defend. Read your opponent."
+            delay={0}
+          />
+          <LessonCard
+            icon="📍"
+            title="Position Is Everything"
+            text="Top vs bottom changes your whole game. Side control top can submit you. Side control bottom? You're surviving."
+            delay={0.3}
+          />
+          <LessonCard
+            icon="⛽"
+            title="Manage Your Gas Tank"
+            text="Every move costs GP. Run out and you can't explode, can't escape, can't do anything. Pace yourself."
+            delay={0.6}
+          />
+          <LessonCard
+            icon="🔒"
+            title="Submissions End Fights"
+            text="When someone locks in a sub, the tighten meter starts climbing. Survive or explode — but if it hits max, you tap."
+            delay={0.9}
+          />
+        </div>
+
+        <div style={{ marginTop: 8 }}>
+          <Btn full onClick={() => { setPhase('DONE'); onComplete && onComplete(); }}>Choose Your Style →</Btn>
+        </div>
+      </Wrap>
+    );
+  }
+
+  // ── DONE (fallback) ─────────────────────────────────────
+  return null;
 }

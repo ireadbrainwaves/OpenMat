@@ -10,6 +10,11 @@ import { ArchIcon } from '../lib/icons';
 import { Btn } from '../components/UI';
 import { sb, G } from '../lib/supabase';
 
+// Archetype naming differs between tables:
+// profiles CHECK constraint uses 'submission_hunter'
+// starter_decks table uses 'sub_hunter'
+const toDeckArchetype = (a) => a === 'submission_hunter' ? 'sub_hunter' : a;
+
 // Step indicator
 const Steps = ({ current, total }) => (
   <div style={{ display: "flex", gap: 6, justifyContent: "center", marginBottom: 24 }}>
@@ -164,7 +169,7 @@ export default function OnboardScreen({ user, onDone, mode = 'full' }) {
   // Fetch starter decks from DB when archetype changes
   useEffect(() => {
     if (!archetype) return;
-    const dbArchetype = archetype === "submission_hunter" ? "sub_hunter" : archetype;
+    const dbArchetype = toDeckArchetype(archetype);
     setLoadingDecks(true);
     setDeck(null);
     sb.from('starter_decks')
@@ -215,23 +220,15 @@ export default function OnboardScreen({ user, onDone, mode = 'full' }) {
     setSaving(true);
     setError(null);
     try {
-      // Map archetype for DB (UI "submission_hunter" → DB "sub_hunter")
-      const rpcArchetype = archetype === "submission_hunter" ? "sub_hunter" : archetype;
+      // profiles table uses 'submission_hunter', starter_decks uses 'sub_hunter'
+      const profileArchetype = archetype; // raw value from ARCHETYPES (e.g. 'submission_hunter')
+      const deckArchetype = toDeckArchetype(archetype); // mapped for starter_decks/RPC
 
-      // Upsert profile with archetype — include all NOT NULL fields as fallback
-      // in case the auth trigger didn't fire or failed
-      const fallbackName = 'player_' + user.id.slice(0, 8);
-      const { error: upsertErr } = await sb.from("profiles").upsert(
-        {
-          id: user.id,
-          username: fallbackName,
-          display_name: fallbackName,
-          belt: "white",
-          elo: parseInt(1200, 10),
-          archetype: rpcArchetype,
-        },
-        { onConflict: 'id', ignoreDuplicates: false }
-      );
+      // Update profile with archetype — profile already exists from name step
+      // Use update (not upsert) to avoid overwriting username with a fallback
+      const { error: upsertErr } = await sb.from("profiles")
+        .update({ archetype: profileArchetype })
+        .eq('id', user.id);
       if (upsertErr) {
         console.error("Profile upsert error:", upsertErr);
         setError("Failed to save profile. Please try again.");
@@ -239,10 +236,10 @@ export default function OnboardScreen({ user, onDone, mode = 'full' }) {
         return;
       }
       // Seed starter deck — parseInt for deck ID, p_ prefix on all params
-      console.log('[ONBOARD] seeding deck:', { p_profile_id: user.id, p_archetype: rpcArchetype, p_deck_id: parseInt(deck, 10) });
+      console.log('[ONBOARD] seeding deck:', { p_profile_id: user.id, p_archetype: deckArchetype, p_deck_id: parseInt(deck, 10) });
       const { error: seedErr } = await sb.rpc("seed_starter_deck", {
         p_profile_id: user.id,
-        p_archetype: rpcArchetype,
+        p_archetype: deckArchetype,
         p_deck_id: parseInt(deck, 10),
       });
       if (seedErr) {

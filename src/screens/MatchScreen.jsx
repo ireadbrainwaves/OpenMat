@@ -12,6 +12,18 @@ import BotEngine from '../lib/botEngine';
 // New UI from prototype, real Supabase integration
 // ═══════════════════════════════════════════════════════════
 
+// Position top/bottom label helper
+function getPositionSuffix(positionId) {
+  if (!positionId) return '';
+  if (positionId.endsWith('_top')) return ' (Top)';
+  if (positionId.endsWith('_bottom')) return ' (Bottom)';
+  if (positionId === 'guard_closed') return ' (Bottom)';
+  if (positionId === 'guard_closed_top') return ' (Top)';
+  if (positionId === 'guard_half_bottom') return ' (Bottom)';
+  if (positionId === 'guard_half_top') return ' (Top)';
+  return '';
+}
+
 export default function MatchScreen({ profile, matchId, onEnd, isBot = false, botId: botIdProp = null }) {
   const [match, setMatch] = useState(null);
   const [opp, setOpp] = useState(null);
@@ -46,6 +58,7 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
 
   // TAP overlay
   const [tapOverlay, setTapOverlay] = useState(null); // { won: bool, subName: string, winnerName: string }
+  const [finishOverlay, setFinishOverlay] = useState(null); // { won: bool, myPoints, oppPoints, method }
 
   // Sub choice reveal
   const [subReveal, setSubReveal] = useState(null); // { myChoice, oppChoice, isAttacker }
@@ -164,7 +177,7 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
     setMatch(m);
     setSel(null); setSelectedStance(null); setSubSel(null);
 
-    // Handle match end — check for submission finish to show TAP overlay
+    // Handle match end — check for submission finish to show TAP overlay, or general finish
     if (m.status === 'finished' && !endedRef.current) {
       endedRef.current = true;
       const winMethod = m.win_method || m.result_method || m.method || m.finish_method || m.result || '';
@@ -180,7 +193,18 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
         });
         setTimeout(() => { setTapOverlay(null); onEnd(m); }, 2500);
       } else {
-        setTimeout(() => onEnd(m), 2500);
+        // Non-submission finish — show general finish overlay
+        const iWon = m.winner_id === profile.id;
+        const isP1 = m.player1_id === profile.id;
+        const myPts = isP1 ? (m.player1_points || 0) : (m.player2_points || 0);
+        const oppPts = isP1 ? (m.player2_points || 0) : (m.player1_points || 0);
+        setFinishOverlay({
+          won: iWon,
+          myPoints: myPts,
+          oppPoints: oppPts,
+          method: winMethod || 'points',
+        });
+        setTimeout(() => { setFinishOverlay(null); onEnd(m); }, 3000);
       }
     }
   }, [matchId]);
@@ -263,10 +287,10 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
     const oppTech = oppMoveId ? G.techniques[oppMoveId] : null;
     // Fallback to lastLockedMoveRef if all fields are empty
     const fallback = lastLockedMoveRef.current || { name: 'Your Move', type: 'unknown' };
-    const myMoveName = myTech?.name || fallback.name;
-    const myMoveType = myTech?.type || fallback.type;
-    const oppMoveName = oppTech?.name || 'Defended';
-    const oppMoveType = oppTech?.type || 'unknown';
+    const myMoveName = myMoveId === '__survive__' ? 'Survive' : myMoveId === '__spaz__' ? 'Spaz' : (myTech?.name || fallback.name);
+    const myMoveType = myMoveId === '__survive__' ? 'escape' : myMoveId === '__spaz__' ? 'takedown' : (myTech?.type || fallback.type);
+    const oppMoveName = oppMoveId === '__survive__' ? 'Survive' : oppMoveId === '__spaz__' ? 'Spaz' : (oppTech?.name || 'Defended');
+    const oppMoveType = oppMoveId === '__survive__' ? 'escape' : oppMoveId === '__spaz__' ? 'takedown' : (oppTech?.type || 'unknown');
 
     // Build better description — avoid generic "escaped" unless escape-type technique
     let cleanDesc = turn.description ? turn.description.replace(/\s*\[VARIANT:\s*.+?\]/, '').trim() : 'Position holds';
@@ -352,25 +376,24 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
   async function lockMove() {
     if (!sel || busy) return; setBusy(true);
 
-    // Handle universal moves (survive / spaz)
+    // Handle universal moves (survive / spaz) — submit through normal move flow
     if (sel.is_universal) {
       const uMove = universalMoves.find(u => u.id === sel.id);
       lastLockedMoveRef.current = { name: uMove?.name || sel.id, type: 'universal', variantName: null };
-      console.log('[UNIVERSAL]', sel.id, '— submitting');
+      const techId = sel.id === 'survive' ? '__survive__' : '__spaz__';
+      console.log('[UNIVERSAL]', sel.id, '— submitting as', techId);
 
-      if (sel.id === 'survive') {
-        const { error } = await sb.rpc('resolve_survive', { p_match_id: matchId, p_player_id: profile.id });
-        if (error) dbg('Survive error: ' + error.message, 'err');
-      } else if (sel.id === 'spaz') {
-        const { error } = await sb.rpc('resolve_spaz', { p_match_id: matchId, p_player_id: profile.id });
-        if (error) dbg('Spaz error: ' + error.message, 'err');
-      }
+      const { error } = await sb.rpc('submit_move', {
+        p_match_id: matchId,
+        p_technique_id: techId,
+        p_is_counter: false,
+        p_is_bait: false,
+        p_feint_move: null,
+      });
+      if (error) dbg('Universal move error: ' + error.message, 'err');
 
-      // Always refresh after universal move RPC to pick up state changes
-      await refreshMatch();
-
-      // Bot response for universal moves
-      if (isBotMatch) {
+      // Bot response — same as normal moves
+      if (!error && isBotMatch) {
         const m = matchRef.current;
         const botDrills = m?.player1_id === botId ? (m?.player1_drilled_moves || []) : (m?.player2_drilled_moves || []);
         const botPos = m?.player1_id === botId ? (m?.player1_position || m?.current_position) : (m?.player2_position || m?.current_position);
@@ -455,6 +478,7 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
   const showingMovePick = phase === 'move' && !myLocked && match.status !== 'finished';
   const showingMoveWait = phase === 'move' && myLocked && match.status !== 'finished';
   const showingSub = phase === 'sub_minigame' && match.sub_minigame_active;
+  console.log('[SUB MINIGAME CHECK]', { phase, turn_phase: match.turn_phase, sub_minigame_active: match.sub_minigame_active, showingSub, sub_attacker_id: match.sub_attacker_id, sub_technique_id: match.sub_technique_id });
 
   const F = {
     display: { fontFamily: T.display },
@@ -515,7 +539,7 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
       {/* ═══ POSITION ═══ */}
       <div style={{ flexShrink: 0, position: 'relative', height: 56, borderBottom: `1px solid ${T.border}`, background: T.surface, display: 'flex', alignItems: 'flex-end', padding: '0 18px 8px', justifyContent: 'space-between' }}>
         <div>
-          <div style={{ ...F.display, fontSize: 17, color: T.text, lineHeight: 1, marginBottom: 2 }}>{pos?.name?.replace(/ \(.*\)/, '') || 'Unknown'}</div>
+          <div style={{ ...F.display, fontSize: 17, color: T.text, lineHeight: 1, marginBottom: 2 }}>{(pos?.name?.replace(/ \(.*\)/, '') || 'Unknown') + getPositionSuffix(myPos)}</div>
           <div style={{ ...F.mono, fontSize: 8, color: FAMILY_COLORS[pos?.family] || T.muted, textTransform: 'uppercase' }}>{pos?.family?.replace('_', ' ')}</div>
         </div>
         <span style={{ ...F.mono, fontSize: 8, padding: '3px 8px', border: '1px solid', borderRadius: 3, textTransform: 'uppercase', fontWeight: 500, color: statusColor[myStatus] || T.muted, borderColor: (statusColor[myStatus] || T.muted) + '66', background: (statusColor[myStatus] || T.muted) + '0C' }}>{myStatus}</span>
@@ -788,7 +812,7 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
           const subRound = match?.sub_phase ?? 1;
 
           const attOpts = [
-            { id: 'squeeze', label: 'Squeeze', desc: 'Commit fully', cost: 2, color: T.red },
+            { id: 'squeeze', label: 'Tighten', desc: 'Commit fully', cost: 2, color: T.red },
             { id: 'adjust', label: 'Adjust', desc: 'Reposition grip', cost: 1, color: T.amber },
             { id: 'transition_sub', label: 'Chain Sub', desc: 'Switch submission', cost: 1, color: T.purple },
           ];
@@ -1005,7 +1029,7 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
         <div style={{
           position: 'absolute', inset: 0, zIndex: 100,
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          background: tapOverlay.won ? '#D4603A' : '#E63946',
+          background: tapOverlay.won ? '#FFD700' : '#E63946',
           animation: 'tapShake 0.4s ease-out',
         }}>
           <div style={{
@@ -1026,6 +1050,31 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
             ...F.mono, fontSize: 11, color: 'rgba(255,255,255,0.5)',
             marginTop: 8,
           }}>{tapOverlay.winnerName} wins</div>
+        </div>
+      )}
+
+      {/* ═══ FINISH OVERLAY (non-submission) ═══ */}
+      {finishOverlay && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 100,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          background: finishOverlay.won ? '#FFD700' : finishOverlay.method === 'draw' ? '#4A90D9' : '#E63946',
+          animation: 'tapShake 0.4s ease-out',
+        }}>
+          <div style={{
+            ...F.display, fontSize: 56, fontWeight: 900, color: finishOverlay.won ? '#1a1a1a' : '#fff',
+            lineHeight: 1, letterSpacing: '0.05em',
+            animation: 'tapBounce 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+            textShadow: finishOverlay.won ? 'none' : '0 4px 20px rgba(0,0,0,0.4)',
+          }}>{finishOverlay.won ? 'VICTORY' : 'DEFEAT'}</div>
+          <div style={{
+            ...F.display, fontSize: 28, color: finishOverlay.won ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.9)',
+            marginTop: 12,
+          }}>{finishOverlay.myPoints} – {finishOverlay.oppPoints}</div>
+          <div style={{
+            ...F.mono, fontSize: 13, color: finishOverlay.won ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.7)',
+            marginTop: 12, textTransform: 'uppercase', letterSpacing: '0.1em',
+          }}>Won by {finishOverlay.method}</div>
         </div>
       )}
 

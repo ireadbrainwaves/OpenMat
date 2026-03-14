@@ -34,21 +34,34 @@ export default function PostMatchScreen({ profile, match, onRematch, onHome }) {
       const { data: turns } = await sb.from('match_turns').select('*').eq('match_id', match.id).order('turn_number');
       if (!turns || turns.length === 0) return;
 
-      // Collect opponent's technique IDs from turns
+      // Collect opponent's technique IDs from turns (skip universal moves)
       const oppTechIds = [];
       for (const t of turns) {
         const tid = isP1 ? (t.player2_technique_id || t.player2_move) : (t.player1_technique_id || t.player1_move);
-        if (tid && !oppTechIds.includes(tid)) oppTechIds.push(tid);
+        if (tid && tid !== '__survive__' && tid !== '__spaz__' && !oppTechIds.includes(tid)) oppTechIds.push(tid);
+      }
+
+      if (oppTechIds.length === 0) {
+        setLearnedTech(null);
+        return;
       }
 
       // Get player's deck to find what they DON'T have
       const { data: playerDeck } = await sb.from('player_move_stacks').select('technique_id').eq('profile_id', profile.id);
       const playerTechIds = new Set((playerDeck || []).map(d => d.technique_id));
 
+      // If G.techniques is empty, fetch directly
+      let techLookup = G.techniques;
+      if (!techLookup || Object.keys(techLookup).length === 0) {
+        const { data: techData } = await sb.from('techniques').select('id, name, type').in('id', oppTechIds);
+        techLookup = {};
+        (techData || []).forEach(t => { techLookup[t.id] = t; });
+      }
+
       // Find first opponent technique the player doesn't have
       for (const tid of oppTechIds) {
         if (!playerTechIds.has(tid)) {
-          const tech = G.techniques[tid];
+          const tech = techLookup[tid];
           if (tech) {
             setLearnedTech({ name: tech.name, type: tech.type });
             return;
@@ -56,10 +69,12 @@ export default function PostMatchScreen({ profile, match, onRematch, onHome }) {
         }
       }
       // Fallback: show the last opponent technique used
-      if (oppTechIds.length > 0) {
-        const lastTid = oppTechIds[oppTechIds.length - 1];
-        const tech = G.techniques[lastTid];
-        if (tech) setLearnedTech({ name: tech.name, type: tech.type });
+      const lastTid = oppTechIds[oppTechIds.length - 1];
+      const tech = techLookup[lastTid];
+      if (tech) {
+        setLearnedTech({ name: tech.name, type: tech.type });
+      } else {
+        setLearnedTech(null);
       }
     })();
   }, [won, match.id]);
@@ -111,12 +126,12 @@ export default function PostMatchScreen({ profile, match, onRematch, onHome }) {
       </div>
 
       {/* New technique learned (on win) */}
-      {won && (
+      {won && learnedTech && (
         <div style={{ padding: "12px", background: `${T.teal}08`, border: `1px solid ${T.teal}20`, borderRadius: 6, marginBottom: 16 }}>
           <div style={{ fontFamily: T.mono, fontSize: 9, color: T.teal, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>New Technique Learned</div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <MoveIcon type={learnedTech?.type || "submission"} size={16}/>
-            <span style={{ fontFamily: T.mono, fontSize: 12, color: T.white }}>{learnedTech?.name || 'Loading...'}</span>
+            <MoveIcon type={learnedTech.type} size={16}/>
+            <span style={{ fontFamily: T.mono, fontSize: 12, color: T.white }}>{learnedTech.name}</span>
             <span style={{ fontFamily: T.mono, fontSize: 9, color: T.dim }}>added to Known</span>
           </div>
         </div>
