@@ -91,19 +91,26 @@ export default function LobbyScreen({ user, profile, onNavigate }) {
   // ── CHALLENGE BOT ──────────────────────────────────────
   const challengeBot = async (botProfileId) => {
     setLoading(botProfileId); setError(null);
-    try {
-      const { data, error: rpcError } = await sb.rpc("challenge_bot", {
-        p_player_id: user.id,
-        p_bot_id: botProfileId,
-      });
-      if (rpcError) throw rpcError;
-      if (!data) throw new Error("No match ID returned");
-      onNavigate && onNavigate('game_plan', { matchId: data, isBot: true, botId: botProfileId });
-    } catch (e) {
-      console.error("Challenge bot error:", e);
-      setError("Failed to start match — try again.");
+    console.log('[LADDER] challenge_bot called:', { p_player_id: user.id, p_bot_id: botProfileId });
+    const { data, error: rpcError } = await sb.rpc("challenge_bot", {
+      p_player_id: user.id,
+      p_bot_id: botProfileId,
+    });
+    console.log('[LADDER] challenge_bot response:', { data, error: rpcError });
+    if (rpcError) {
+      console.error("Challenge bot RPC error:", rpcError);
+      setError(`Failed to start match: ${rpcError.message || 'Unknown error'}`);
+      setLoading(null);
+      return;
+    }
+    if (!data) {
+      console.error("Challenge bot returned no match ID");
+      setError("Failed to start match — no match ID returned.");
+      setLoading(null);
+      return;
     }
     setLoading(null);
+    onNavigate && onNavigate('game_plan', { matchId: data, isBot: true, botId: botProfileId });
   };
 
   // Quick match challenge (old format)
