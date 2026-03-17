@@ -175,9 +175,17 @@ function LadderSelect({ ladders, checking, onSelect }) {
     return <div style={{ textAlign: 'center', padding: 40, fontFamily: F.body, fontSize: 14, color: T.muted }}>Loading ladders...</div>;
   }
 
-  // Pad to 6 if fewer ladders exist
   const ARCHETYPE_ORDER = ['wrestler', 'guard_puller', 'leg_locker', 'pressure_passer', 'submission_hunter', 'scrambler'];
 
+  // Map DB archetype names to display archetype IDs
+  const normalizeArch = (a) => a === 'sub_hunter' ? 'submission_hunter' : a;
+
+  // Match DB ladders to archetype slots
+  const matchedLadders = {};
+  for (const l of ladders) {
+    const norm = normalizeArch(l.archetype);
+    matchedLadders[norm] = l;
+  }
   return (
     <>
       <div style={{ marginBottom: 16 }}>
@@ -189,7 +197,7 @@ function LadderSelect({ ladders, checking, onSelect }) {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {ARCHETYPE_ORDER.map(archId => {
-          const ladder = ladders.find(l => l.archetype === archId);
+          const ladder = matchedLadders[archId];
           const archColor = ArchColors[archId] || T.muted;
           const animal = ARCHETYPE_ANIMALS[archId] || '';
           const available = !!ladder;
