@@ -1,22 +1,18 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#06060a" />
   <title>Open Mat</title>
-  <script>
-    // SPA redirect for GitHub Pages
-    // Converts the path to a query string so index.html can handle routing
-    var pathSegmentsToKeep = 1; // '/OpenMat/' is one segment
-    var l = window.location;
-    l.replace(
-      l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
-      l.pathname.split('/').slice(0, 1 + pathSegmentsToKeep).join('/') + '/' +
-      '?/' + l.pathname.slice(1).split('/').slice(pathSegmentsToKeep).join('/').replace(/&/g, '~and~') +
-      (l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '') +
-      l.hash
-    );
-  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet">
+  <script type="module" crossorigin src="/OpenMat/assets/index-DnRG92Qv.js"></script>
+  <link rel="stylesheet" crossorigin href="/OpenMat/assets/index-BWwQDsQ6.css">
 </head>
 <body>
+  <div id="root"></div>
+  <div id="debug-log"></div>
 </body>
 </html>

@@ -5,6 +5,6 @@ export default defineConfig({
   plugins: [react({ jsxRuntime: 'classic' })],
   base: '/OpenMat/',
   build: {
-    outDir: 'dist',
+    outDir: 'docs',
   },
 });
