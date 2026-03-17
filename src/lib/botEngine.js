@@ -1,19 +1,14 @@
 import { sb as supabase, G } from './supabase';
 
 /*
- * BotEngine — Phase 4: Difficulty Scaling + Professor Adaptive AI
+ * BotEngine — Phase 5: Personality System + Professor Adaptive AI
  *
  * bot_difficulty (0.15–0.95) controls decision quality across all phases.
- * Higher difficulty = more optimal choices.
+ * personality JSONB overrides defaults per-bot:
+ *   { stance, prefer_types, avoid_types, never_spaz, use_professor_ai }
  *
- * Professor (0.95) uses adaptive AI that learns DURING the match:
- * - Dead end hunting: finds positions where player has no moves
- * - Mastered variant funneling: routes toward kill zones
- * - Pattern reading: adapts stance based on observed player tendencies
- * - Anti-repetition: stays unpredictable
- *
- * CRITICAL: Professor does NOT read player drills. That's input-reading AI.
- * He adapts based on what the player has ACTUALLY PLAYED this match.
+ * Professor AI activates via personality.use_professor_ai OR diff >= 0.90.
+ * Professor does NOT read player drills — adapts from observed play only.
  */
 
 // ── POSITION CLASSIFICATION ──────────────────────────────────
@@ -77,7 +72,7 @@ function isTopPosition(posId) {
   return DOMINANT_POSITIONS.has(posId) || (posId && posId.endsWith('_top'));
 }
 
-// ── CACHES (per-match, doesn't change mid-match) ────────────
+// ── CACHES ───────────────────────────────────────────────────
 const botStackCache = {};
 
 async function getBotMoveStacks(botId) {
@@ -139,11 +134,11 @@ async function getCounterOptions(botId, defenderPosition) {
 // PROFESSOR MEMORY — in-match observation, resets each match
 // ══════════════════════════════════════════════════════════════
 const professorMemory = {
-  playerMovesPlayed: [],      // [{ position, moveId, type, turn }]
-  playerStancesPlayed: [],    // [{ position, stance, turn }]
-  positionVisitCount: {},     // { 'guard_closed': 3 }
-  botMovesPlayed: [],         // [{ moveId, turn }] for anti-repetition
-  matchId: null,              // reset when match changes
+  playerMovesPlayed: [],
+  playerStancesPlayed: [],
+  positionVisitCount: {},
+  botMovesPlayed: [],
+  matchId: null,
 };
 
 function resetProfessorMemory(matchId) {
@@ -159,7 +154,7 @@ function ensureMemoryForMatch(matchId) {
 }
 
 // ── STANCE SELECTION ─────────────────────────────────────────
-function pickStance(diff, botArchetype, currentPosition, botGP, oppGP) {
+function pickStance(diff, botArchetype, currentPosition, botGP, oppGP, personality = {}) {
   const isTop = isTopPosition(currentPosition);
   const gpAdvantage = botGP - oppGP;
 
@@ -177,19 +172,18 @@ function pickStance(diff, botArchetype, currentPosition, botGP, oppGP) {
   if (Math.random() < diff) {
     return optimalStance;
   } else {
-    return weightedChoice(STANCE_WEIGHTS[botArchetype] || STANCE_WEIGHTS.scrambler);
+    const weights = personality?.stance || STANCE_WEIGHTS[botArchetype] || STANCE_WEIGHTS.scrambler;
+    return weightedChoice(weights);
   }
 }
 
-// Professor stance: adapts based on OBSERVED player patterns, not drills
+// Professor stance: adapts based on OBSERVED player patterns
 function pickStanceProfessor(currentPosition, botGP) {
   if (botGP <= 2) return 'setup';
 
-  // Look at what the player has DONE from this position before
   const movesFromHere = professorMemory.playerMovesPlayed
     .filter(m => m.position === currentPosition);
 
-  // Not enough data → attack to push toward kill zones
   if (movesFromHere.length < 2) return 'attack';
 
   const total = movesFromHere.length;
@@ -198,25 +192,24 @@ function pickStanceProfessor(currentPosition, botGP) {
   ).length;
   const offensiveRatio = offensiveCount / total;
 
-  // Player mostly attacks here → counter with defend (65% read, 35% wrong)
   if (offensiveRatio > 0.6) {
     return Math.random() < 0.65 ? 'defend' :
            Math.random() < 0.5 ? 'setup' : 'attack';
   }
-  // Player mostly defends/escapes here → punish with attack
   if (offensiveRatio < 0.3) {
     return Math.random() < 0.65 ? 'attack' :
            Math.random() < 0.5 ? 'setup' : 'defend';
   }
-  // Mixed → stay flexible
   return Math.random() < 0.60 ? 'setup' :
          Math.random() < 0.5 ? 'attack' : 'defend';
 }
 
 // ── MOVE SELECTION ───────────────────────────────────────────
-async function pickMove(diff, techniques, botArchetype, botId, currentPosition, botGP, drilledMoves) {
+async function pickMove(diff, techniques, botArchetype, botId, currentPosition, botGP, drilledMoves, personality = {}) {
   const stacks = await getBotMoveStacks(botId);
   const drilledSet = new Set(drilledMoves || []);
+  const preferTypes = personality?.prefer_types || [];
+  const avoidTypes = personality?.avoid_types || [];
 
   const scored = techniques.map(t => {
     let score = 0;
@@ -230,6 +223,10 @@ async function pickMove(diff, techniques, botArchetype, botId, currentPosition, 
 
     const typeScores = ARCHETYPE_TYPE_SCORES[botArchetype] || ARCHETYPE_TYPE_SCORES.scrambler;
     score += (typeScores[type] || 0) * 5;
+
+    // Personality type preferences
+    if (preferTypes.includes(type)) score += 25;
+    if (avoidTypes.includes(type)) score -= 25;
 
     if (t.to_position && DOMINANT_POSITIONS.has(t.to_position)) score += 15;
 
@@ -261,7 +258,6 @@ async function pickMoveProfessor(techniques, botId, currentPosition, botGP, dril
   const masteredMap = await getMasteredPositions(botId);
   const drilledSet = new Set(drilledMoves || []);
 
-  // Build dead end sets from observed player behavior
   const confirmedDeadEnds = new Set();
   const suspectedDeadEnds = new Set();
   const positionsVisited = new Set();
@@ -273,7 +269,6 @@ async function pickMoveProfessor(techniques, botId, currentPosition, botGP, dril
     }
   });
 
-  // Suspected: positions where player ONLY played escapes or survive/spaz
   positionsVisited.forEach(pos => {
     const movesHere = professorMemory.playerMovesPlayed.filter(m => m.position === pos);
     const onlyDefensive = movesHere.every(m =>
@@ -291,68 +286,36 @@ async function pickMoveProfessor(techniques, botId, currentPosition, botGP, dril
     const tier = stack?.tier;
     const toPos = t.to_position;
 
-    // ── TIER SCORING ──
     if (tier === 'mastered') score += 100;
     else if (tier === 'drilled' || drilledSet.has(t.id)) score += 50;
     else if (tier === 'trained') score += 10;
 
-    // ── TYPE SCORING ──
     if (type === 'submission') score += 30;
     else if (type === 'sweep') score += 25;
     else if (type === 'takedown') score += 30;
     else if (type === 'transition') score += 20;
     else if (type === 'escape') score += 15;
 
-    // ── DEAD END HUNTING (highest priority) ──
+    if (toPos && confirmedDeadEnds.has(toPos)) score += 80;
+    if (toPos && !confirmedDeadEnds.has(toPos) && suspectedDeadEnds.has(toPos)) score += 40;
+    if (toPos && toPos !== 'tap' && !positionsVisited.has(toPos)) score += 20;
+    if (confirmedDeadEnds.has(t.from_position) && type === 'submission') score += 50;
 
-    // Moves landing in confirmed dead ends = jackpot
-    if (toPos && confirmedDeadEnds.has(toPos)) {
-      score += 80;
-    }
-    // Moves landing in suspected dead ends = strong signal
-    if (toPos && !confirmedDeadEnds.has(toPos) && suspectedDeadEnds.has(toPos)) {
-      score += 40;
-    }
-    // Moves landing in unexplored positions = scouting
-    if (toPos && toPos !== 'tap' && !positionsVisited.has(toPos)) {
-      score += 20;
-    }
-    // Subs from confirmed dead end positions = checkmate
-    if (confirmedDeadEnds.has(t.from_position) && type === 'submission') {
-      score += 50;
-    }
-
-    // ── MASTERED VARIANT ROUTING (secondary to dead ends) ──
-
-    if (masteredMap[t.from_position]?.includes(t.id)) {
-      score += 100; // mastered move from current position
-    }
-    if (toPos && masteredMap[toPos]) {
-      score += 40; // route toward mastered kill zone
-    }
-    // 2-step routing toward kill zones
+    if (masteredMap[t.from_position]?.includes(t.id)) score += 100;
+    if (toPos && masteredMap[toPos]) score += 40;
     if (toPos && toPos !== 'tap' && G.techFrom[toPos]) {
       const secondaryPositions = (G.techFrom[toPos] || [])
-        .map(tech => {
-          const t2 = G.techniques[tech.id || tech];
-          return t2?.to_position;
-        })
+        .map(tech => { const t2 = G.techniques[tech.id || tech]; return t2?.to_position; })
         .filter(Boolean);
-      if (secondaryPositions.some(p => masteredMap[p])) {
-        score += 20;
-      }
+      if (secondaryPositions.some(p => masteredMap[p])) score += 20;
     }
 
-    // ── DOMINANT POSITION BONUS ──
     if (toPos && DOMINANT_POSITIONS.has(toPos)) score += 15;
 
-    // ── ANTI-REPETITION ──
-    const timesUsed = professorMemory.botMovesPlayed
-      .filter(m => m.moveId === t.id).length;
+    const timesUsed = professorMemory.botMovesPlayed.filter(m => m.moveId === t.id).length;
     if (timesUsed === 1) score -= 15;
     if (timesUsed >= 2) score -= 30;
 
-    // ── GP MANAGEMENT ──
     const cost = GP_COSTS[type] || 1;
     if (botGP <= cost + 1) score -= 20;
 
@@ -366,7 +329,6 @@ async function pickMoveProfessor(techniques, botId, currentPosition, botGP, dril
     (masteredMap[s.from_position]?.includes(s.id) ? ' [MASTERED]' : '')
   ));
 
-  // Professor picks from top 2 (slight unpredictability)
   const topTier = scored.filter(s => s.score >= scored[0].score - 5);
   return topTier[Math.floor(Math.random() * topTier.length)].id;
 }
@@ -378,14 +340,12 @@ async function pickSubChoice(diff, match, botId, isAttacker) {
 
   if (isAttacker) {
     const chainOptions = await getChainSubOptions(botId, botPos, match.sub_technique_id);
-
     if (Math.random() < diff) {
       const tighten = match.sub_tighten_turns || 0;
       if (tighten >= 3 && chainOptions.length > 0 && Math.random() < 0.4) {
         return { choice: 'chain_sub', techniqueId: chainOptions[0].id };
-      } else {
-        return { choice: 'tighten', techniqueId: null };
       }
+      return { choice: 'tighten', techniqueId: null };
     } else {
       const roll = Math.random();
       if (roll < 0.6) return { choice: 'tighten', techniqueId: null };
@@ -394,16 +354,14 @@ async function pickSubChoice(diff, match, botId, isAttacker) {
     }
   } else {
     const counterOptions = await getCounterOptions(botId, botPos);
-
     if (Math.random() < diff) {
       const tighten = match.sub_tighten_turns || 0;
       if (counterOptions.length > 0 && Math.random() < 0.25) {
         return { choice: 'counter', techniqueId: counterOptions[0].id };
       } else if (tighten >= 3) {
         return { choice: 'explode', techniqueId: null };
-      } else {
-        return { choice: 'escape', techniqueId: null };
       }
+      return { choice: 'escape', techniqueId: null };
     } else {
       const roll = Math.random();
       if (roll < 0.45) return { choice: 'escape', techniqueId: null };
@@ -415,7 +373,8 @@ async function pickSubChoice(diff, match, botId, isAttacker) {
 }
 
 // ── SURVIVE / SPAZ ───────────────────────────────────────────
-function pickSurviveOrSpaz(diff, botGP) {
+function pickSurviveOrSpaz(diff, botGP, personality = {}) {
+  if (personality?.never_spaz) return '__survive__';
   if (botGP < 3) return '__survive__';
   if (Math.random() < diff) return '__survive__';
   return Math.random() < 0.4 ? '__spaz__' : '__survive__';
@@ -427,7 +386,6 @@ function pickSurviveOrSpaz(diff, botGP) {
 export const BotEngine = {
   get THINK_DELAY_MS() { return 800 + Math.random() * 1200; },
 
-  // Called from MatchScreen after each turn reveal to feed the Professor's memory
   updateMemory(matchId, playerMoveId, playerStance, playerPosition, botMoveId, turnNumber) {
     ensureMemoryForMatch(matchId);
     const tech = G.techniques[playerMoveId];
@@ -438,11 +396,7 @@ export const BotEngine = {
       turn: turnNumber,
     });
     if (playerStance) {
-      professorMemory.playerStancesPlayed.push({
-        position: playerPosition,
-        stance: playerStance,
-        turn: turnNumber,
-      });
+      professorMemory.playerStancesPlayed.push({ position: playerPosition, stance: playerStance, turn: turnNumber });
     }
     professorMemory.positionVisitCount[playerPosition] =
       (professorMemory.positionVisitCount[playerPosition] || 0) + 1;
@@ -450,17 +404,14 @@ export const BotEngine = {
       professorMemory.botMovesPlayed.push({ moveId: botMoveId, turn: turnNumber });
     }
     console.log('[PROFESSOR MEMORY]', {
-      turn: turnNumber,
-      playerMove: playerMoveId,
-      playerPos: playerPosition,
+      turn: turnNumber, playerMove: playerMoveId, playerPos: playerPosition,
       confirmedDeadEnds: professorMemory.playerMovesPlayed
-        .filter(m => m.moveId === '__survive__' || m.moveId === '__spaz__')
-        .map(m => m.position),
+        .filter(m => m.moveId === '__survive__' || m.moveId === '__spaz__').map(m => m.position),
       positionsVisited: Object.keys(professorMemory.positionVisitCount),
     });
   },
 
-  async respondToStance(match, botId, botArchetype, difficulty) {
+  async respondToStance(match, botId, botArchetype, difficulty, personality = {}) {
     await new Promise(r => setTimeout(r, this.THINK_DELAY_MS));
     const diff = parseDifficulty(difficulty);
     const isP1 = match.player1_id === botId;
@@ -470,18 +421,17 @@ export const BotEngine = {
 
     ensureMemoryForMatch(match.id);
 
+    const useProfessor = personality?.use_professor_ai || diff >= 0.90;
     let stance;
-    if (diff >= 0.90) {
+    if (useProfessor) {
       stance = pickStanceProfessor(botPos, botGP);
     } else {
-      stance = pickStance(diff, botArchetype, botPos, botGP, oppGP);
+      stance = pickStance(diff, botArchetype, botPos, botGP, oppGP, personality);
     }
 
     try {
       const { error } = await supabase.rpc('bot_submit_stance', {
-        p_match_id: match.id,
-        p_player_id: botId,
-        p_stance: stance,
+        p_match_id: match.id, p_player_id: botId, p_stance: stance,
       });
       if (error) {
         console.error('Bot stance error:', error);
@@ -494,7 +444,7 @@ export const BotEngine = {
     }
   },
 
-  async respondToMove(match, botId, botArchetype, botHand, drilledMoves, opponentStance, difficulty) {
+  async respondToMove(match, botId, botArchetype, botHand, drilledMoves, opponentStance, difficulty, personality = {}) {
     await new Promise(r => setTimeout(r, this.THINK_DELAY_MS));
     const diff = parseDifficulty(difficulty);
     const isP1 = match.player1_id === botId;
@@ -506,14 +456,11 @@ export const BotEngine = {
     console.log('Bot hand debug:', { position: botPos, handLength: botHand?.length, difficulty: diff });
 
     if (!botHand || botHand.length === 0) {
-      const moveChoice = pickSurviveOrSpaz(diff, botGP);
+      const moveChoice = pickSurviveOrSpaz(diff, botGP, personality);
       console.log(`Bot has no moves — picking ${moveChoice} (GP: ${botGP}, diff: ${diff})`);
       try {
         const { error } = await supabase.rpc('bot_submit_move', {
-          p_match_id: match.id,
-          p_player_id: botId,
-          p_technique_id: moveChoice,
-          p_is_counter: false,
+          p_match_id: match.id, p_player_id: botId, p_technique_id: moveChoice, p_is_counter: false,
         });
         if (error) console.error('Bot universal move error:', error.message);
         return moveChoice;
@@ -530,10 +477,11 @@ export const BotEngine = {
 
     let chosen;
     if (techniques && techniques.length > 0) {
-      if (diff >= 0.90) {
+      const useProfessor = personality?.use_professor_ai || diff >= 0.90;
+      if (useProfessor) {
         chosen = await pickMoveProfessor(techniques, botId, botPos, botGP, drilledMoves);
       } else {
-        chosen = await pickMove(diff, techniques, botArchetype, botId, botPos, botGP, drilledMoves);
+        chosen = await pickMove(diff, techniques, botArchetype, botId, botPos, botGP, drilledMoves, personality);
       }
       console.log('Bot chosen move:', chosen, '(diff:', diff, ')');
     } else {
@@ -542,10 +490,7 @@ export const BotEngine = {
 
     try {
       const { error } = await supabase.rpc('bot_submit_move', {
-        p_match_id: match.id,
-        p_player_id: botId,
-        p_technique_id: chosen,
-        p_is_counter: false,
+        p_match_id: match.id, p_player_id: botId, p_technique_id: chosen, p_is_counter: false,
       });
       if (error) console.error('Bot move error:', error);
       return chosen;
@@ -564,13 +509,8 @@ export const BotEngine = {
     const { choice, techniqueId } = await pickSubChoice(diff, match, botId, isAttacker);
 
     try {
-      const rpcParams = {
-        p_match_id: match.id,
-        p_player_id: botId,
-        p_choice: choice,
-      };
+      const rpcParams = { p_match_id: match.id, p_player_id: botId, p_choice: choice };
       if (techniqueId) rpcParams.p_technique_id = techniqueId;
-
       const { error } = await supabase.rpc('bot_submit_sub_choice', rpcParams);
       if (error) console.error('Bot sub choice error:', error);
       console.log('Bot sub choice:', choice, techniqueId ? `(tech: ${techniqueId})` : '', '(diff:', diff, ')');

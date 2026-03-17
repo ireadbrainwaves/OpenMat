@@ -48,6 +48,7 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
   const [botId, setBotId] = useState(null);
   const [botArchetype, setBotArchetype] = useState(null);
   const [botDifficulty, setBotDifficulty] = useState(null);
+  const [botPersonality, setBotPersonality] = useState({});
 
   // Universal moves shown when hand is empty (not during sub minigame)
   const universalMoves = [
@@ -240,7 +241,18 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
           setIsBotMatch(true);
           setBotId(oppId);
           setBotArchetype(o.archetype);
-          setBotDifficulty(o.bot_difficulty || 'easy');
+          // Fetch from ladder_bots for difficulty + personality
+          const { data: ladderBot } = await sb.from('ladder_bots')
+            .select('bot_difficulty, personality')
+            .eq('bot_profile_id', oppId)
+            .maybeSingle();
+          if (ladderBot) {
+            setBotDifficulty(ladderBot.bot_difficulty);
+            setBotPersonality(ladderBot.personality || {});
+          } else {
+            setBotDifficulty(o.bot_difficulty || 'easy');
+            setBotPersonality({});
+          }
         }
       }
       const { data: d } = await sb.from('player_move_stacks').select('technique_id, tier, equipped_variant').eq('profile_id', profile.id);
@@ -394,7 +406,7 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
     const { error } = await sb.rpc('submit_stance', { p_match_id: matchId, p_stance: stance });
     if (error) dbg('Stance error: ' + error.message, 'err');
     if (!error && isBotMatch) {
-      BotEngine.respondToStance(matchRef.current, botId, botArchetype, botDifficulty);
+      BotEngine.respondToStance(matchRef.current, botId, botArchetype, botDifficulty, botPersonality);
     }
     setBusy(false);
   }
@@ -429,7 +441,7 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
           p_archetype: botArchetype,
           p_drilled_moves: botDrills,
         });
-        await BotEngine.respondToMove(m, botId, botArchetype, botHand, botDrills, myStanceVal, botDifficulty);
+        await BotEngine.respondToMove(m, botId, botArchetype, botHand, botDrills, myStanceVal, botDifficulty, botPersonality);
         setTimeout(() => refreshMatch(), 500);
       }
       setBusy(false);
@@ -455,7 +467,7 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
         p_archetype: botArchetype,
         p_drilled_moves: botDrills,
       });
-      await BotEngine.respondToMove(m, botId, botArchetype, botHand, botDrills, myStanceVal, botDifficulty);
+      await BotEngine.respondToMove(m, botId, botArchetype, botHand, botDrills, myStanceVal, botDifficulty, botPersonality);
       setTimeout(() => refreshMatch(), 500);
     }
     setBusy(false);
