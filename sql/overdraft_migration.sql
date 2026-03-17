@@ -1,0 +1,61 @@
+-- ═══════════════════════════════════════════════════════════
+-- OPEN MAT — GP OVERDRAFT MIGRATION
+-- Run in Supabase SQL Editor
+--
+-- 1. Remove GP check from submit_move (if present)
+-- 2. Add overdraft mechanic to resolve_turn
+-- ═══════════════════════════════════════════════════════════
+
+-- ─── STEP 1: Check submit_move for GP blocking ──────────
+-- Run this first to see what submit_move does:
+-- SELECT prosrc FROM pg_proc WHERE proname = 'submit_move';
+--
+-- If it contains a check like:
+--   IF v_player_gp < v_tech_gp_cost THEN RAISE EXCEPTION 'Insufficient GP';
+-- Remove that check. The move should always be accepted.
+-- The penalty is applied in resolve_turn, not in submit_move.
+
+-- ─── STEP 2: Add overdraft to resolve_turn ──────────────
+-- In the DECLARE block of resolve_turn, add:
+--   v_p1_overdraft INTEGER := 0;
+--   v_p2_overdraft INTEGER := 0;
+--
+-- After GP cost calculation for each player:
+--   v_p1_overdraft := GREATEST(0, v_p1_gp_cost - v_match.player1_gp);
+--   v_p2_overdraft := GREATEST(0, v_p2_gp_cost - v_match.player2_gp);
+--
+-- In submission defense chance calculation, after existing defense_chance:
+--   IF v_p1_overdraft > 0 THEN
+--     v_defense_chance := v_defense_chance + (v_p1_overdraft * 0.15);
+--   END IF;
+--   -- Mirror for P2 when P2 is attacking
+--
+-- In difficulty clash for transitions/sweeps/TDs:
+--   Subtract overdraft from clash score:
+--   (v_p1_tech.difficulty
+--     + (CASE WHEN v_p1_dom THEN 1 ELSE 0 END)
+--     + v_p1_cb * 5
+--     + (CASE WHEN v_p1_has_variant THEN v_p1_variant_bonus * 5 ELSE 0 END)
+--     - v_p1_overdraft  -- Each GP short = -1 difficulty in clash
+--   )
+--
+-- GP still goes to 0 when overdrafting (spend everything you have):
+--   v_match.player1_gp := GREATEST(0, v_match.player1_gp - v_p1_gp_cost);
+--
+-- Add overdraft info to turn description:
+--   IF v_p1_overdraft > 0 THEN
+--     v_description := v_description || ' [' || v_p1_name || ' GASSED -' || (v_p1_overdraft * 15) || '%]';
+--   END IF;
+--   IF v_p2_overdraft > 0 THEN
+--     v_description := v_description || ' [' || v_p2_name || ' GASSED -' || (v_p2_overdraft * 15) || '%]';
+--   END IF;
+
+-- ═══════════════════════════════════════════════════════════
+-- NOTE: The actual SQL changes need to be applied to your
+-- specific resolve_turn function. The above is a guide for
+-- where to insert the overdraft logic. The exact line numbers
+-- depend on your current function implementation.
+--
+-- Key principle: moves are ALWAYS submittable. The overdraft
+-- penalty is applied during resolution, not submission.
+-- ═══════════════════════════════════════════════════════════

@@ -1,12 +1,13 @@
 // ═══════════════════════════════════════════════════════════
 // OPEN MAT — MOVE CARD COMPONENT SYSTEM
 // 4 modes: compact (hand), full (detail), row (list), flip (reveal)
-// Light mode. DM font family. Sports-editorial aesthetic.
+// + Efficiency grade (belt-gated), tier progress, GP overdraft
 // ═══════════════════════════════════════════════════════════
 
 import React from 'react';
 import { T, TYPE_COLORS, TIER_STYLES } from '../lib/tokens';
 import { G } from '../lib/supabase';
+import { calculateEfficiency, getTierProgress } from '../lib/efficiency';
 
 const F = {
   display: T.display,
@@ -14,7 +15,7 @@ const F = {
   body: T.body,
 };
 
-// ── TYPE ICON SVGs (light mode optimized) ────────────────
+// ── TYPE ICON SVGs ───────────────────────────────────────
 export function TypeIcon({ type, size = 14 }) {
   const tc = TYPE_COLORS[type];
   const color = tc?.dark || "#666";
@@ -77,6 +78,70 @@ export function TierBadge({ tier, large }) {
   );
 }
 
+// ── EFFICIENCY BADGE (circle with letter) ────────────────
+function EfficiencyBadge({ eff, size = 22 }) {
+  if (!eff) return null;
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: "50%",
+      background: eff.color, display: "flex",
+      alignItems: "center", justifyContent: "center",
+      flexShrink: 0,
+    }}>
+      <span style={{
+        fontFamily: F.display, fontSize: size * 0.64, color: "#FFFFFF",
+        lineHeight: 1,
+      }}>
+        {eff.grade}
+      </span>
+    </div>
+  );
+}
+
+// ── EFFICIENCY BAR (label + letter + bar) ────────────────
+function EfficiencyBar({ eff }) {
+  if (!eff) return null;
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+        <span style={{ fontFamily: F.mono, fontSize: 8, color: "#9CA3AF", letterSpacing: "0.08em" }}>EFFICIENCY</span>
+        <span style={{ fontFamily: F.display, fontSize: 20, color: eff.color }}>{eff.grade}</span>
+      </div>
+      <div style={{ width: "100%", height: 4, background: "#E5E7EB", borderRadius: 4 }}>
+        <div style={{
+          width: `${eff.score}%`, height: "100%",
+          background: eff.color, borderRadius: 4,
+          transition: "width 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+        }} />
+      </div>
+    </div>
+  );
+}
+
+// ── TIER PROGRESS BAR ────────────────────────────────────
+function TierProgressBar({ tier, timesUsed, showLabels = true }) {
+  const prog = getTierProgress(tier, timesUsed);
+  if (!prog) return null;
+  const pct = (prog.current / prog.target) * 100;
+  return (
+    <div>
+      {showLabels && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+          <span style={{ fontFamily: F.mono, fontSize: 8, color: "#9CA3AF", letterSpacing: "0.08em" }}>PROFICIENCY</span>
+          <span style={{ fontFamily: F.mono, fontSize: 8, color: prog.color }}>{prog.label}</span>
+        </div>
+      )}
+      <div style={{ width: "100%", height: showLabels ? 4 : 2, background: "#E5E7EB", borderRadius: 4 }}>
+        <div style={{
+          width: `${pct}%`, height: "100%",
+          background: prog.color, borderRadius: 4,
+          transition: "width 0.3s",
+        }} />
+      </div>
+    </div>
+  );
+}
+
 // ── GP COLOR helper ──────────────────────────────────────
 function gpColor(gp) {
   if (gp <= 2) return T.gpCheap;
@@ -95,7 +160,12 @@ function posName(posId) {
 // ═══════════════════════════════════════════════════════════
 //  MODE: COMPACT — match hand, game plan
 // ═══════════════════════════════════════════════════════════
-function CompactCard({ move, type, tier, gp, gpMod = 0, selected, variant, onClick }) {
+function CompactCard({
+  move, type, tier, gp, gpMod = 0, selected, variant, onClick,
+  // New props
+  currentGP, belt, playerArchetype, playerPosition, chainCount,
+  hasVariant, variantBonus,
+}) {
   const tc = TYPE_COLORS[type] || TYPE_COLORS.transition;
   const ts = TIER_STYLES[tier] || TIER_STYLES.known;
   const effectiveGP = (gp || 0) + (gpMod || 0);
@@ -103,17 +173,31 @@ function CompactCard({ move, type, tier, gp, gpMod = 0, selected, variant, onCli
   const fromPos = posName(move?.from_position);
   const toPos = posName(move?.to_position);
 
+  // GP overdraft
+  const overdraft = currentGP != null ? Math.max(0, effectiveGP - currentGP) : 0;
+  const isGassed = overdraft > 0;
+
+  // Efficiency grade (belt-gated)
+  const technique = move?.id ? G.techniques?.[move.id] : move;
+  const eff = belt && belt !== 'white' ? calculateEfficiency({
+    technique, tier, playerArchetype, playerPosition,
+    chainCount: chainCount || 0,
+    hasVariant: hasVariant || !!variant,
+    variantBonus: variantBonus || 0,
+    belt, currentGP,
+  }) : null;
+
   return (
     <div onClick={onClick} style={{
       width: 144, minHeight: 172,
-      background: selected ? tc.bg : "#FFFFFF",
-      border: `1.5px solid ${selected ? tc.color : "#E5E7EB"}`,
+      background: selected ? (isGassed ? '#FEF2F1' : tc.bg) : "#FFFFFF",
+      border: `1.5px solid ${selected ? (isGassed ? '#C23028' : tc.color) : "#E5E7EB"}`,
       borderRadius: 10, padding: "12px 11px 10px",
       cursor: "pointer", display: "flex", flexDirection: "column", gap: 4,
       transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
       transform: selected ? "translateY(-4px)" : "none",
       boxShadow: selected
-        ? `0 8px 24px ${tc.border}, 0 0 0 1px ${tc.color}`
+        ? `0 8px 24px ${isGassed ? '#F5C4C2' : tc.border}, 0 0 0 1px ${isGassed ? '#C23028' : tc.color}`
         : "0 1px 3px rgba(0,0,0,0.04)",
       position: "relative", overflow: "hidden",
       flexShrink: 0,
@@ -135,30 +219,40 @@ function CompactCard({ move, type, tier, gp, gpMod = 0, selected, variant, onCli
         </div>
       )}
 
-      {/* Type badge + GP */}
+      {/* Type badge + Efficiency + GP */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div style={{
-          display: "flex", alignItems: "center", gap: 4,
-          padding: "3px 7px", borderRadius: 4,
-          background: tc.bg, border: `1px solid ${tc.border}`,
-        }}>
-          <TypeIcon type={type} size={11} />
-          <span style={{
-            fontFamily: F.mono, fontSize: 8, fontWeight: 500,
-            letterSpacing: "0.06em", color: tc.dark,
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{
+            display: "flex", alignItems: "center", gap: 4,
+            padding: "3px 7px", borderRadius: 4,
+            background: tc.bg, border: `1px solid ${tc.border}`,
           }}>
-            {tc.label}
-          </span>
+            <TypeIcon type={type} size={11} />
+            <span style={{
+              fontFamily: F.mono, fontSize: 8, fontWeight: 500,
+              letterSpacing: "0.06em", color: tc.dark,
+            }}>
+              {tc.label}
+            </span>
+          </div>
+          {eff && <EfficiencyBadge eff={eff} size={22} />}
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{
             fontFamily: F.display, fontSize: 26, lineHeight: 1,
-            color: gpColor(effectiveGP),
+            color: isGassed ? '#C23028' : gpColor(effectiveGP),
           }}>
             {effectiveGP}
           </div>
-          <div style={{ fontFamily: F.mono, fontSize: 7, color: "#9CA3AF", letterSpacing: "0.08em" }}>GP</div>
-          {gpMod !== 0 && (
+          <div style={{ fontFamily: F.mono, fontSize: 7, color: isGassed ? '#C23028' : "#9CA3AF", letterSpacing: "0.08em" }}>
+            {isGassed ? 'GASSED' : 'GP'}
+          </div>
+          {isGassed && (
+            <div style={{ fontFamily: F.mono, fontSize: 7, color: '#C23028', marginTop: 1 }}>
+              -{overdraft * 15}%
+            </div>
+          )}
+          {!isGassed && gpMod !== 0 && (
             <div style={{
               fontFamily: F.mono, fontSize: 7, marginTop: 1,
               color: gpMod < 0 ? T.gpCheap : T.gpExpensive,
@@ -216,12 +310,28 @@ function CompactCard({ move, type, tier, gp, gpMod = 0, selected, variant, onCli
 // ═══════════════════════════════════════════════════════════
 //  MODE: FULL — detail view, library expand
 // ═══════════════════════════════════════════════════════════
-function FullCard({ move, type, tier, gp, gpMod = 0, locked, requiredBelt, variant, isInDeck, onClose, onAddToDeck, onRemoveFromDeck }) {
+function FullCard({
+  move, type, tier, gp, gpMod = 0, locked, requiredBelt, variant, isInDeck,
+  onClose, onAddToDeck, onRemoveFromDeck,
+  // New props
+  belt, playerArchetype, playerPosition, chainCount,
+  hasVariant, variantBonus, timesUsed,
+}) {
   const tc = TYPE_COLORS[type] || TYPE_COLORS.transition;
   const ts = TIER_STYLES[tier] || TIER_STYLES.known;
   const effectiveGP = (gp || 0) + (gpMod || 0);
   const fromPos = posName(move?.from_position);
   const toPos = posName(move?.to_position);
+
+  // Efficiency grade (belt-gated)
+  const technique = move?.id ? G.techniques?.[move.id] : move;
+  const eff = belt && belt !== 'white' ? calculateEfficiency({
+    technique, tier, playerArchetype, playerPosition,
+    chainCount: chainCount || 0,
+    hasVariant: hasVariant || !!variant,
+    variantBonus: variantBonus || 0,
+    belt,
+  }) : null;
 
   return (
     <div style={{
@@ -264,9 +374,7 @@ function FullCard({ move, type, tier, gp, gpMod = 0, locked, requiredBelt, varia
       )}
 
       {/* Color header band */}
-      <div style={{
-        height: 4, background: `linear-gradient(90deg, ${tc.color}, ${tc.border})`,
-      }} />
+      <div style={{ height: 4, background: `linear-gradient(90deg, ${tc.color}, ${tc.border})` }} />
 
       {/* Header */}
       <div style={{ padding: "14px 18px 12px", background: tc.bg }}>
@@ -279,17 +387,11 @@ function FullCard({ move, type, tier, gp, gpMod = 0, locked, requiredBelt, varia
                 background: "#FFFFFF", border: `1px solid ${tc.border}`,
               }}>
                 <TypeIcon type={type} size={13} />
-                <span style={{
-                  fontFamily: F.mono, fontSize: 9, fontWeight: 500,
-                  letterSpacing: "0.06em", color: tc.dark,
-                }}>
-                  {tc.label}
-                </span>
+                <span style={{ fontFamily: F.mono, fontSize: 9, fontWeight: 500, letterSpacing: "0.06em", color: tc.dark }}>{tc.label}</span>
               </div>
               <TierBadge tier={tier} large />
             </div>
           </div>
-
           {/* GP pill */}
           <div style={{
             textAlign: "center", background: "#FFFFFF",
@@ -297,20 +399,10 @@ function FullCard({ move, type, tier, gp, gpMod = 0, locked, requiredBelt, varia
             border: `1.5px solid ${tc.border}`,
             boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
           }}>
-            <div style={{
-              fontFamily: F.display, fontSize: 38, lineHeight: 1,
-              color: gpColor(effectiveGP),
-            }}>
-              {effectiveGP}
-            </div>
-            <div style={{ fontFamily: F.mono, fontSize: 8, color: "#9CA3AF", letterSpacing: "0.12em", marginTop: 2 }}>
-              GP COST
-            </div>
+            <div style={{ fontFamily: F.display, fontSize: 38, lineHeight: 1, color: gpColor(effectiveGP) }}>{effectiveGP}</div>
+            <div style={{ fontFamily: F.mono, fontSize: 8, color: "#9CA3AF", letterSpacing: "0.12em", marginTop: 2 }}>GP COST</div>
             {gpMod !== 0 && (
-              <div style={{
-                fontFamily: F.mono, fontSize: 8, marginTop: 2,
-                color: gpMod < 0 ? T.gpCheap : T.gpExpensive,
-              }}>
+              <div style={{ fontFamily: F.mono, fontSize: 8, marginTop: 2, color: gpMod < 0 ? T.gpCheap : T.gpExpensive }}>
                 {gpMod < 0 ? `${gpMod} drilled` : `+${gpMod} known`}
               </div>
             )}
@@ -318,10 +410,7 @@ function FullCard({ move, type, tier, gp, gpMod = 0, locked, requiredBelt, varia
         </div>
 
         {/* Move name */}
-        <div style={{
-          fontFamily: F.display, fontSize: 28, color: "#111827",
-          lineHeight: 1.15, marginBottom: 3,
-        }}>
+        <div style={{ fontFamily: F.display, fontSize: 28, color: "#111827", lineHeight: 1.15, marginBottom: 3 }}>
           {move?.name || "Unknown"}
         </div>
 
@@ -340,82 +429,44 @@ function FullCard({ move, type, tier, gp, gpMod = 0, locked, requiredBelt, varia
       {/* Description */}
       {move?.description && (
         <div style={{ padding: "14px 18px", borderBottom: "1px solid #F3F4F6" }}>
-          <div style={{
-            fontFamily: F.body, fontSize: 13.5, color: "#4B5563",
-            lineHeight: 1.6, fontStyle: "italic",
-          }}>
+          <div style={{ fontFamily: F.body, fontSize: 13.5, color: "#4B5563", lineHeight: 1.6, fontStyle: "italic" }}>
             "{move.description}"
           </div>
         </div>
       )}
 
-      {/* Position flow */}
+      {/* Position flow + stats */}
       <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
         {(fromPos || toPos) && (
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{
-              flex: 1, padding: "10px 12px",
-              background: "#F9FAFB", borderRadius: 8,
-              border: "1px solid #F3F4F6", textAlign: "center",
-            }}>
+            <div style={{ flex: 1, padding: "10px 12px", background: "#F9FAFB", borderRadius: 8, border: "1px solid #F3F4F6", textAlign: "center" }}>
               <div style={{ fontFamily: F.mono, fontSize: 8, color: "#9CA3AF", letterSpacing: "0.1em", marginBottom: 4 }}>FROM</div>
               <div style={{ fontFamily: F.display, fontSize: 14, color: "#374151" }}>{fromPos || "—"}</div>
             </div>
-            <div style={{
-              width: 32, height: 32, borderRadius: "50%",
-              background: tc.bg, border: `1.5px solid ${tc.border}`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              flexShrink: 0,
-            }}>
-              <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
-                <path d="M1 5h10M9 1l4 4-4 4" stroke={tc.color} strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: tc.bg, border: `1.5px solid ${tc.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5h10M9 1l4 4-4 4" stroke={tc.color} strokeWidth="1.5" strokeLinecap="round" /></svg>
             </div>
-            <div style={{
-              flex: 1, padding: "10px 12px",
-              background: tc.bg, borderRadius: 8,
-              border: `1px solid ${tc.border}`, textAlign: "center",
-            }}>
+            <div style={{ flex: 1, padding: "10px 12px", background: tc.bg, borderRadius: 8, border: `1px solid ${tc.border}`, textAlign: "center" }}>
               <div style={{ fontFamily: F.mono, fontSize: 8, color: tc.color, letterSpacing: "0.1em", marginBottom: 4 }}>TO</div>
               <div style={{ fontFamily: F.display, fontSize: 14, color: tc.dark }}>{toPos || "—"}</div>
             </div>
           </div>
         )}
 
-        {/* Success rate */}
-        {move?.success_rate != null && (
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
-              <span style={{ fontFamily: F.mono, fontSize: 9, color: "#9CA3AF", letterSpacing: "0.08em" }}>
-                SUCCESS RATE
-              </span>
-              <span style={{ fontFamily: F.display, fontSize: 20, color: tc.dark }}>
-                {move.success_rate}%
-              </span>
-            </div>
-            <div style={{ width: "100%", height: 5, background: "#E5E7EB", borderRadius: 5 }}>
-              <div style={{
-                width: `${move.success_rate}%`, height: "100%",
-                background: tc.color, borderRadius: 5,
-                transition: "width 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-              }} />
-            </div>
-          </div>
-        )}
+        {/* Efficiency bar (blue belt+) */}
+        {eff && <EfficiencyBar eff={eff} />}
+
+        {/* Tier progress (deck/library only) */}
+        {timesUsed != null && <TierProgressBar tier={tier} timesUsed={timesUsed} showLabels />}
 
         {/* Stats pills */}
         <div style={{ display: "flex", gap: 8 }}>
-          <div style={{
-            flex: 1, padding: "8px 10px",
-            background: "#F9FAFB", borderRadius: 6,
-            display: "flex", justifyContent: "space-between", alignItems: "center",
-          }}>
+          <div style={{ flex: 1, padding: "8px 10px", background: "#F9FAFB", borderRadius: 6, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontFamily: F.mono, fontSize: 8, color: "#9CA3AF" }}>BASE GP</span>
             <span style={{ fontFamily: F.display, fontSize: 16, color: "#374151" }}>{gp || 0}</span>
           </div>
           <div style={{
-            flex: 1, padding: "8px 10px",
-            background: ts.bg, borderRadius: 6,
+            flex: 1, padding: "8px 10px", background: ts.bg, borderRadius: 6,
             display: "flex", justifyContent: "space-between", alignItems: "center",
             border: `1px solid ${tier === "drilled" || tier === "mastered" ? "#F0DBA8" : "#F3F4F6"}`,
           }}>
@@ -427,44 +478,27 @@ function FullCard({ move, type, tier, gp, gpMod = 0, locked, requiredBelt, varia
 
       {/* Action buttons */}
       {(onClose || onAddToDeck || onRemoveFromDeck) && (
-        <div style={{
-          padding: "10px 18px 14px",
-          borderTop: "1px solid #F3F4F6",
-          display: "flex", gap: 8,
-        }}>
+        <div style={{ padding: "10px 18px 14px", borderTop: "1px solid #F3F4F6", display: "flex", gap: 8 }}>
           {onClose && (
             <button onClick={onClose} style={{
-              flex: 1, padding: "10px",
-              border: "1.5px solid #E5E7EB", borderRadius: 8,
-              background: "#FFFFFF", color: "#6B7280",
-              fontFamily: F.mono, fontSize: 10, letterSpacing: "0.08em",
-              cursor: "pointer",
-            }}>
-              BACK
-            </button>
+              flex: 1, padding: "10px", border: "1.5px solid #E5E7EB", borderRadius: 8,
+              background: "#FFFFFF", color: "#6B7280", fontFamily: F.mono, fontSize: 10, letterSpacing: "0.08em", cursor: "pointer",
+            }}>BACK</button>
           )}
           {onAddToDeck && !isInDeck && (
             <button onClick={onAddToDeck} style={{
-              flex: 2, padding: "10px",
-              border: "none", borderRadius: 8,
-              background: tc.color, color: "#FFFFFF",
-              fontFamily: F.mono, fontSize: 10, letterSpacing: "0.08em",
-              fontWeight: 600, cursor: "pointer",
+              flex: 2, padding: "10px", border: "none", borderRadius: 8,
+              background: tc.color, color: "#FFFFFF", fontFamily: F.mono, fontSize: 10,
+              letterSpacing: "0.08em", fontWeight: 600, cursor: "pointer",
               boxShadow: `0 2px 8px ${tc.border}`,
-            }}>
-              ADD TO DECK
-            </button>
+            }}>ADD TO DECK</button>
           )}
           {onRemoveFromDeck && isInDeck && (
             <button onClick={onRemoveFromDeck} style={{
-              flex: 2, padding: "10px",
-              border: `1.5px solid ${tc.border}`, borderRadius: 8,
-              background: tc.bg, color: tc.dark,
-              fontFamily: F.mono, fontSize: 10, letterSpacing: "0.08em",
-              fontWeight: 600, cursor: "pointer",
-            }}>
-              REMOVE FROM DECK
-            </button>
+              flex: 2, padding: "10px", border: `1.5px solid ${tc.border}`, borderRadius: 8,
+              background: tc.bg, color: tc.dark, fontFamily: F.mono, fontSize: 10,
+              letterSpacing: "0.08em", fontWeight: 600, cursor: "pointer",
+            }}>REMOVE FROM DECK</button>
           )}
         </div>
       )}
@@ -475,9 +509,20 @@ function FullCard({ move, type, tier, gp, gpMod = 0, locked, requiredBelt, varia
 // ═══════════════════════════════════════════════════════════
 //  MODE: ROW — deck builder list, library browse
 // ═══════════════════════════════════════════════════════════
-function RowCard({ move, type, tier, gp, gpMod = 0, isInDeck, locked, onClick }) {
+function RowCard({
+  move, type, tier, gp, gpMod = 0, isInDeck, locked, onClick,
+  // New props
+  belt, playerArchetype, playerPosition, timesUsed,
+}) {
   const tc = TYPE_COLORS[type] || TYPE_COLORS.transition;
   const effectiveGP = (gp || 0) + (gpMod || 0);
+
+  // Efficiency grade (belt-gated)
+  const technique = move?.id ? G.techniques?.[move.id] : move;
+  const eff = belt && belt !== 'white' ? calculateEfficiency({
+    technique, tier, playerArchetype, playerPosition,
+    chainCount: 0, hasVariant: false, variantBonus: 0, belt,
+  }) : null;
 
   return (
     <div onClick={onClick} style={{
@@ -493,18 +538,15 @@ function RowCard({ move, type, tier, gp, gpMod = 0, isInDeck, locked, onClick })
       <div style={{
         width: 32, height: 32, borderRadius: "50%",
         background: tc.bg, border: `1px solid ${tc.border}`,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        flexShrink: 0,
+        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
       }}>
         <TypeIcon type={type} size={15} />
       </div>
 
-      {/* Name + description */}
+      {/* Name + description + tier progress bar */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-          <span style={{ fontFamily: F.display, fontSize: 16, color: "#111827" }}>
-            {move?.name || "Unknown"}
-          </span>
+          <span style={{ fontFamily: F.display, fontSize: 16, color: "#111827" }}>{move?.name || "Unknown"}</span>
           {locked && (
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
               <rect x="5" y="11" width="14" height="10" rx="2" stroke="#9CA3AF" strokeWidth="2.5" />
@@ -513,11 +555,14 @@ function RowCard({ move, type, tier, gp, gpMod = 0, isInDeck, locked, onClick })
           )}
         </div>
         {move?.description && (
-          <div style={{
-            fontFamily: F.body, fontSize: 11.5, color: "#9CA3AF",
-            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-          }}>
+          <div style={{ fontFamily: F.body, fontSize: 11.5, color: "#9CA3AF", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {move.description}
+          </div>
+        )}
+        {/* Thin tier progress bar under name */}
+        {timesUsed != null && (
+          <div style={{ marginTop: 3 }}>
+            <TierProgressBar tier={tier} timesUsed={timesUsed} showLabels={false} />
           </div>
         )}
       </div>
@@ -546,23 +591,17 @@ function RowCard({ move, type, tier, gp, gpMod = 0, isInDeck, locked, onClick })
         {effectiveGP}
       </div>
 
+      {/* Efficiency badge (blue belt+) */}
+      {eff && <EfficiencyBadge eff={eff} size={18} />}
+
       {/* In-deck check */}
       <div style={{ width: 22, flexShrink: 0, textAlign: "center" }}>
         {isInDeck ? (
-          <div style={{
-            width: 18, height: 18, borderRadius: "50%",
-            background: "#0F7B5F", display: "flex",
-            alignItems: "center", justifyContent: "center",
-          }}>
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
-              <path d="M5 13l4 4L19 7" stroke="#FFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+          <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#0F7B5F", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#FFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </div>
         ) : (
-          <div style={{
-            width: 18, height: 18, borderRadius: "50%",
-            border: "1.5px solid #E5E7EB",
-          }} />
+          <div style={{ width: 18, height: 18, borderRadius: "50%", border: "1.5px solid #E5E7EB" }} />
         )}
       </div>
     </div>
@@ -570,7 +609,7 @@ function RowCard({ move, type, tier, gp, gpMod = 0, isInDeck, locked, onClick })
 }
 
 // ═══════════════════════════════════════════════════════════
-//  MODE: FLIP — turn reveal
+//  MODE: FLIP — turn reveal (no efficiency, no tier)
 // ═══════════════════════════════════════════════════════════
 function FlipCard({ move, type, isOpponent, flipped }) {
   const tc = TYPE_COLORS[type] || TYPE_COLORS.transition;
@@ -587,32 +626,19 @@ function FlipCard({ move, type, isOpponent, flipped }) {
         transition: "transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)",
         transform: flipped ? "rotateY(180deg)" : "none",
       }}>
-        {/* Back (face-down) */}
+        {/* Back */}
         <div style={{
           position: "absolute", inset: 0, backfaceVisibility: "hidden",
           background: "#FAFAFA", border: "1.5px solid #E5E7EB",
           borderRadius: 10, display: "flex", flexDirection: "column",
           alignItems: "center", justifyContent: "center", gap: 10,
         }}>
-          <div style={{
-            width: 48, height: 48, borderRadius: "50%",
-            border: "1.5px solid #E5E7EB", display: "flex",
-            alignItems: "center", justifyContent: "center",
-          }}>
-            <div style={{
-              width: 32, height: 32, borderRadius: "50%",
-              border: "1.5px solid #F3F4F6",
-            }} />
+          <div style={{ width: 48, height: 48, borderRadius: "50%", border: "1.5px solid #E5E7EB", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", border: "1.5px solid #F3F4F6" }} />
           </div>
-          <span style={{
-            fontFamily: F.display, fontSize: 14, letterSpacing: "0.06em",
-            color: "#D1D5DB",
-          }}>
-            OPEN MAT
-          </span>
+          <span style={{ fontFamily: F.display, fontSize: 14, letterSpacing: "0.06em", color: "#D1D5DB" }}>OPEN MAT</span>
         </div>
-
-        {/* Front (face-up) */}
+        {/* Front */}
         <div style={{
           position: "absolute", inset: 0, backfaceVisibility: "hidden",
           transform: "rotateY(180deg)",
@@ -620,39 +646,16 @@ function FlipCard({ move, type, isOpponent, flipped }) {
           borderRadius: 10, padding: "14px 12px",
           display: "flex", flexDirection: "column",
         }}>
-          <div style={{
-            fontFamily: F.mono, fontSize: 8, letterSpacing: "0.14em",
-            color: sideColor, marginBottom: 8,
-            background: "#FFFFFF", padding: "2px 6px", borderRadius: 3,
-            alignSelf: "flex-start",
-          }}>
+          <div style={{ fontFamily: F.mono, fontSize: 8, letterSpacing: "0.14em", color: sideColor, marginBottom: 8, background: "#FFFFFF", padding: "2px 6px", borderRadius: 3, alignSelf: "flex-start" }}>
             {isOpponent ? "OPPONENT" : "YOUR MOVE"}
           </div>
-          <div style={{
-            display: "inline-flex", alignItems: "center", gap: 4,
-            padding: "3px 7px", borderRadius: 4,
-            background: "#FFFFFF", border: `1px solid ${tc.border}`,
-            alignSelf: "flex-start", marginBottom: 12,
-          }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 7px", borderRadius: 4, background: "#FFFFFF", border: `1px solid ${tc.border}`, alignSelf: "flex-start", marginBottom: 12 }}>
             <TypeIcon type={type} size={10} />
-            <span style={{
-              fontFamily: F.mono, fontSize: 8, color: tc.dark,
-              letterSpacing: "0.06em", fontWeight: 500,
-            }}>
-              {tc.label}
-            </span>
+            <span style={{ fontFamily: F.mono, fontSize: 8, color: tc.dark, letterSpacing: "0.06em", fontWeight: 500 }}>{tc.label}</span>
           </div>
-          <div style={{
-            fontFamily: F.display, fontSize: 22, color: "#111827",
-            lineHeight: 1.15, flex: 1,
-          }}>
-            {move?.name || "Unknown"}
-          </div>
+          <div style={{ fontFamily: F.display, fontSize: 22, color: "#111827", lineHeight: 1.15, flex: 1 }}>{move?.name || "Unknown"}</div>
           {(fromPos || toPos) && (
-            <div style={{
-              fontFamily: F.mono, fontSize: 8, color: "#9CA3AF",
-              letterSpacing: "0.04em",
-            }}>
+            <div style={{ fontFamily: F.mono, fontSize: 8, color: "#9CA3AF", letterSpacing: "0.04em" }}>
               {fromPos} <span style={{ color: tc.color }}>→</span> {toPos}
             </div>
           )}
@@ -663,7 +666,7 @@ function FlipCard({ move, type, isOpponent, flipped }) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  MAIN EXPORT — mode router
+//  MAIN EXPORT
 // ═══════════════════════════════════════════════════════════
 export default function MoveCard(props) {
   const { mode = "compact" } = props;
@@ -676,5 +679,4 @@ export default function MoveCard(props) {
   }
 }
 
-// Named exports for direct import
 export { CompactCard, FullCard, RowCard, FlipCard };

@@ -321,6 +321,9 @@ export default function DeckScreen({ profile, onProfileUpdate }) {
                           isInDeck={isIn}
                           locked={t.locked}
                           onClick={() => setExpandedMove({ ...t, techId })}
+                          belt={profile?.belt}
+                          playerArchetype={profile?.archetype}
+                          timesUsed={t.times_used}
                         />
                       );
                     })}
@@ -351,6 +354,9 @@ export default function DeckScreen({ profile, onProfileUpdate }) {
                     isInDeck={tab === 'deck' || deckTechIds.has(t.id || t.technique_id)}
                     locked={t.locked}
                     onClick={() => setExpandedMove(t)}
+                    belt={profile?.belt}
+                    playerArchetype={profile?.archetype}
+                    timesUsed={t.times_used}
                   />
                 ))}
               </div>
@@ -385,6 +391,9 @@ export default function DeckScreen({ profile, onProfileUpdate }) {
               onClose={() => setExpandedMove(null)}
               onAddToDeck={!expandedMove.locked ? () => addToDeck(expandedMove.id || expandedMove.technique_id) : undefined}
               onRemoveFromDeck={() => removeFromDeck(expandedMove.id || expandedMove.technique_id)}
+              belt={profile?.belt}
+              playerArchetype={profile?.archetype}
+              timesUsed={expandedMove.times_used}
             />
           </div>
         </div>
