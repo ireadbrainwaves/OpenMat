@@ -203,7 +203,7 @@ export default function App() {
     <AppShell>
       {tab === 'home' && <HomeScreen user={user} profile={profile} onNavigate={(t) => setTab(t)} />}
       {tab === 'lobby' && <LobbyScreen user={user} profile={profile} onNavigate={handleNavigate} />}
-      {tab === 'deck' && <DeckScreen profile={profile} />}
+      {tab === 'deck' && <DeckScreen profile={profile} onProfileUpdate={(p) => setProfile(p)} />}
       {tab === 'profile' && <ProfileScreen user={user} profile={profile} />}
       <BottomNav active={tab} onNavigate={setTab} />
       <BugReportButton currentScreen={screen + ':' + tab} matchId={null} />

@@ -68,19 +68,19 @@ export async function loadGraph() {
 }
 
 export function getStatus(posId, archetype) {
-  return (G.matrix[posId] && G.matrix[posId][archetype]) || 'neutral';
+  return (G.matrix[posId] && G.matrix[posId][archetype]) || 'even';
 }
 
 export function getMoves(posId, belt, deck, overtime, archetype) {
   const lvl = beltOrder[belt] || 1;
-  const status = archetype ? getStatus(posId, archetype) : 'neutral';
+  const status = archetype ? getStatus(posId, archetype) : 'even';
 
   return (G.techFrom[posId] || []).filter(t => {
     if ((beltOrder[t.belt_unlock] || 1) > lvl) return false;
     if (!deck.includes(t.id)) return false;
     if (overtime && t.type !== 'submission') return false;
     // Position-based only: from_position match is handled by techFrom[posId].
-    // Status (defending/dominant) does NOT restrict which moves you can play.
+    // Status (top/bottom/even) does NOT restrict which moves you can play.
     return true;
   });
 }

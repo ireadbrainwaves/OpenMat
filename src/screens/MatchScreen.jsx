@@ -1,10 +1,11 @@
 import React from 'react';
 const { useState, useEffect, useRef, useCallback } = React;
 import { sb, dbg, G, beltOrder, getStatus, drawHand } from '../lib/supabase';
-import { ARCHETYPES, FAMILY_COLORS, GP_COSTS } from '../lib/constants';
+import { ARCHETYPES, FAMILY_COLORS, GP_COSTS, BELT_GP } from '../lib/constants';
 import { T, MTColors, MTLabels, TierDisplay } from '../lib/tokens';
 import { MoveIcon, StanceIcon } from '../lib/icons';
 import { Btn, Spinner, Center } from '../components/UI';
+import { CompactCard, FlipCard } from '../components/MoveCard';
 import BotEngine from '../lib/botEngine';
 
 // ═══════════════════════════════════════════════════════════
@@ -34,6 +35,8 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
   const [lastTurn, setLastTurn] = useState(null);
   const [turnHistory, setTurnHistory] = useState([]);
   const [subSel, setSubSel] = useState(null);
+  const [subPickerFor, setSubPickerFor] = useState(null); // 'chain_sub' | 'counter' | null
+  const [subPickerTechId, setSubPickerTechId] = useState(null); // selected technique in picker
   const [selectedStance, setSelectedStance] = useState(null);
   const [isBotMatch, setIsBotMatch] = useState(false);
   const [botId, setBotId] = useState(null);
@@ -43,7 +46,7 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
   // Universal moves shown when hand is empty (not during sub minigame)
   const universalMoves = [
     { id: 'survive', name: 'Survive', type: 'universal', description: 'Hunker down. Rest and recover.', gp_cost: 0, gp_recovery: 1, is_universal: true },
-    { id: 'spaz', name: 'Spaz', type: 'universal', description: 'Explosive escape. Costs 3 GP. If opponent subs — checkmate.', gp_cost: 3, gp_recovery: 0, is_universal: true },
+    { id: 'spaz', name: 'Spaz', type: 'universal', description: 'Explosive escape. Costs 4 GP. If opponent subs — checkmate.', gp_cost: 4, gp_recovery: 0, is_universal: true },
   ];
 
   // Reveal overlay
@@ -100,14 +103,30 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
   const myGp = amP1 ? (match?.player1_gp ?? 10) : (match?.player2_gp ?? 10);
   const oppGp = amP1 ? (match?.player2_gp ?? 10) : (match?.player1_gp ?? 10);
   const myChain = amP1 ? (match?.player1_chain ?? 0) : (match?.player2_chain ?? 0);
-  // Three hand states:
-  // 1. moves + GP >= 3 → normal hand only
-  // 2. moves + GP < 3 → normal hand + survive at bottom
-  // 3. zero moves → survive + spaz only
+  const gpMax = BELT_GP[profile.belt]?.max || 10;
+
+  // Desperation mode: server tracks via player_desperation flag, fallback to GP < 0
+  const myDesperation = amP1 ? match?.player1_desperation : match?.player2_desperation;
+  const myLastMoveUsed = amP1 ? match?.player1_last_move_used : match?.player2_last_move_used;
+  const isDesperation = myDesperation === true || myGp < 0;
+  const isLastMove = myGp === 0 && !isDesperation;
+
+  // Position-based GP recovery indicator (from positions table, graceful fallback)
+  const posRecovery = (() => {
+    if (!myPos || !pos) return 0;
+    const isTop = myPos.includes('_top') || pos.family === 'standing' || myPos === 'scramble';
+    return isTop ? (pos.gp_recovery_top ?? 0) : (pos.gp_recovery_bottom ?? 0);
+  })();
+
+  // Hand states:
+  // 1. desperation (GP < 0) → survive only
+  // 2. zero moves → survive + spaz
+  // 3. moves + GP < 3 → normal hand + survive at bottom
+  // 4. normal → full hand
   const inMovePhase = phase === 'move' && !myLocked && deck.length > 0 && myPos && !match?.sub_minigame_active && match?.status !== 'finished';
-  const zeroMoves = inMovePhase && moves.length === 0;
-  const showSurviveExtra = inMovePhase && moves.length > 0 && myGp < 3;
-  if (phase === 'move') console.log('[UNIVERSAL CHECK]', { handLength: moves.length, myGP: myGp, zeroMoves, showSurviveExtra });
+  const zeroMoves = inMovePhase && !isDesperation && moves.length === 0;
+  const showSurviveExtra = inMovePhase && !isDesperation && moves.length > 0 && myGp < 3;
+  if (phase === 'move') console.log('[UNIVERSAL CHECK]', { handLength: moves.length, myGP: myGp, zeroMoves, showSurviveExtra, isDesperation, isLastMove });
 
   // Stance config
   const stancesCfg = [
@@ -116,7 +135,7 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
     { id: 'setup',  label: 'Setup',  desc: 'Recover grip, reset -- +2 GP',   gp: '+2 GP', color: T.amber },
   ];
 
-  const statusColor = { dominant: T.green, neutral: T.muted, defending: T.amber, disadvantaged: T.red };
+  const statusColor = { top: T.green, even: T.muted, bottom: T.amber };
 
   // ── CORE: Refresh match + turns from DB ─────────────────
   const refreshMatch = useCallback(async () => {
@@ -175,7 +194,7 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
     prevSubTechRef.current = m.sub_technique_id || null;
 
     setMatch(m);
-    setSel(null); setSelectedStance(null); setSubSel(null);
+    setSel(null); setSelectedStance(null); setSubSel(null); setSubPickerFor(null); setSubPickerTechId(null);
 
     // Handle match end — check for submission finish to show TAP overlay, or general finish
     if (m.status === 'finished' && !endedRef.current) {
@@ -313,6 +332,14 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
 
     console.log('[REVEAL]', { isPlayer1: isP1, myMoveId, oppMoveId, myMoveName, oppMoveName, description: cleanDesc, turnFields: { p1_tech: turn.player1_technique_id, p2_tech: turn.player2_technique_id, p1_move: turn.player1_move, p2_move: turn.player2_move } });
     console.log('[REVEAL CARD]', { opponentStance: isP1 ? m?.player2_stance : m?.player1_stance, opponentMove: oppMoveId, oppMoveName, oppMoveType });
+
+    // Feed Professor memory: what the player played, from where, and what the bot played
+    if (isBotMatch && myMoveId) {
+      const playerPos = turn.position_before || (isP1 ? turn.player1_position : turn.player2_position) || m?.current_position;
+      const playerStance = isP1 ? m?.player1_stance : m?.player2_stance;
+      BotEngine.updateMemory(matchId, myMoveId, playerStance, playerPos, oppMoveId, turn.turn_number);
+    }
+
     setRevealData({ description: cleanDesc, result: turn.result, turn: turn.turn_number, myMoveName, myMoveType, variantName: variantName || fallback.variantName, oppMoveName, oppMoveType, newPosName });
     setYourFlipped(false); setOppFlipped(false); setShowResult(false);
     setShowReveal(true);
@@ -435,15 +462,49 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
     setBusy(false);
   }
 
+  // Get chain sub options: other submissions from the current sub's position that are in player's deck
+  function getChainSubOptions() {
+    if (!match?.sub_technique_id) return [];
+    const currentSub = G.techniques[match.sub_technique_id];
+    if (!currentSub) return [];
+    const fromPos = currentSub.from_position;
+    const allFromPos = G.techFrom[fromPos] || [];
+    return allFromPos.filter(t =>
+      t.type === 'submission' &&
+      t.id !== match.sub_technique_id &&
+      deckIds.includes(t.id)
+    );
+  }
+
+  // Get counter options: sweeps and submissions from defender's position that are in player's deck
+  function getCounterOptions() {
+    const defPos = amP1 ? (match?.player1_position || match?.current_position) : (match?.player2_position || match?.current_position);
+    if (!defPos) return [];
+    const allFromPos = G.techFrom[defPos] || [];
+    return allFromPos.filter(t =>
+      (t.type === 'submission' || t.type === 'sweep') &&
+      deckIds.includes(t.id)
+    );
+  }
+
   async function lockSubChoice() {
     if (!subSel || busy) return;
+    // If chain_sub or reversal_sub selected but no technique picked yet, open picker
+    if ((subSel === 'chain_sub' || subSel === 'counter') && !subPickerTechId) {
+      setSubPickerFor(subSel);
+      return;
+    }
     setBusy(true);
     lastSubChoiceRef.current = subSel;
-    const { error } = await sb.rpc('submit_sub_choice', { p_match_id: matchId, p_choice: subSel });
+    const rpcParams = { p_match_id: matchId, p_choice: subSel };
+    if (subPickerTechId) rpcParams.p_technique_id = subPickerTechId;
+    const { error } = await sb.rpc('submit_sub_choice', rpcParams);
     if (error) {
       dbg('Sub err: ' + error.message, 'err');
     } else {
       setSubSel(null);
+      setSubPickerFor(null);
+      setSubPickerTechId(null);
       if (isBotMatch && match?.sub_minigame_active) {
         const botIsAttacker = match.sub_attacker_id === botId;
         await BotEngine.respondToSubMinigame(match, botId, botIsAttacker, botDifficulty);
@@ -468,8 +529,8 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
     <Center><Spinner size={30} /><div style={{ color: T.muted, fontSize: 13, fontFamily: T.body }}>Loading match...</div></Center>
   );
 
-  const gpPct = (myGp / 12) * 100;
-  const gpColor = myGp <= 2 ? T.red : myGp <= 5 ? T.amber : T.green;
+  const gpPct = Math.max(0, (myGp / gpMax) * 100);
+  const gpColor = isDesperation ? '#ff2222' : myGp <= 2 ? T.red : myGp <= 5 ? T.amber : T.green;
   const oppStaminaLabel = oppGp >= 8 ? 'Fresh' : oppGp >= 4 ? 'Tired' : 'Gassed';
   const oppStaminaColor = oppGp >= 8 ? T.green : oppGp >= 4 ? T.amber : T.red;
 
@@ -521,12 +582,23 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
       </div>
 
       {/* ═══ RESOURCE BAR ═══ */}
-      <div style={{ display: 'flex', alignItems: 'center', padding: '6px 18px', gap: 8, borderBottom: `1px solid ${T.border}`, flexShrink: 0, background: T.surface }}>
+      <div style={{ display: 'flex', alignItems: 'center', padding: '6px 18px', gap: 8, borderBottom: `1px solid ${T.border}`, flexShrink: 0, background: isDesperation ? '#ff222208' : T.surface }}>
         <span style={{ ...F.display, fontSize: 18, color: gpColor, lineHeight: 1 }}>{myGp}</span>
-        <span style={{ ...F.mono, fontSize: 8, color: T.dim }}>/12 GP</span>
+        <span style={{ ...F.mono, fontSize: 8, color: T.dim }}>/{gpMax} GP</span>
         <div style={{ flex: 1, height: 3, background: T.border, borderRadius: 2, overflow: 'hidden' }}>
           <div style={{ height: '100%', width: gpPct + '%', background: gpColor, borderRadius: 2, transition: 'width 0.3s' }} />
         </div>
+        {(() => {
+          const isSetup = myStanceVal === 'setup';
+          const arrow = posRecovery > 0 ? '▲' : posRecovery < 0 ? '▼' : '─';
+          const color = posRecovery > 0 ? T.green : posRecovery < 0 ? T.red : T.dim;
+          return (
+            <span style={{ ...F.mono, fontSize: 9, fontWeight: 600, color }}>
+              {posRecovery > 0 ? '+' : ''}{posRecovery}{arrow}
+              {isSetup && <span style={{ color: T.amber }}> +2</span>}
+            </span>
+          );
+        })()}
         <div style={{ width: 1, height: 14, background: T.border }} />
         <span style={{ ...F.mono, fontSize: 7, color: T.dim }}>Chain</span>
         <span style={{ ...F.display, fontSize: 15, color: myChain >= 4 ? T.red : myChain >= 2 ? T.amber : T.dim, lineHeight: 1 }}>{myChain}</span>
@@ -626,7 +698,52 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
               ))}
             </div>
 
-            {/* State 3: Zero moves — Survive + Spaz desperation */}
+            {/* DESPERATION MODE: gassed, survive only */}
+            {isDesperation && inMovePhase && (
+              <div style={{ flex: 1, overflowY: 'auto', padding: '6px 18px 0', minHeight: 0 }}>
+                <div style={{ textAlign: 'center', padding: '16px 12px', marginBottom: 12, background: '#ff222210', border: '2px solid #ff222240', borderRadius: 10, animation: 'desperationPulse 2s ease-in-out infinite' }}>
+                  <div style={{ ...F.display, fontSize: 24, color: '#ff2222', letterSpacing: '0.1em' }}>EXHAUSTED</div>
+                  <div style={{ ...F.mono, fontSize: 10, color: T.red, marginTop: 4 }}>Survive and recover — need 2 GP for moves</div>
+                  <div style={{ ...F.mono, fontSize: 9, color: T.dim, marginTop: 6 }}>
+                    GP: {myGp} · Recovery: {posRecovery > 0 ? `+${posRecovery}` : posRecovery}/turn
+                    {myStanceVal === 'setup' ? ' +2 setup' : ''}
+                  </div>
+                </div>
+                {(() => {
+                  const isSel = sel?.id === 'survive' && sel?.is_universal;
+                  return (
+                    <div onClick={() => setSel({ id: 'survive', is_universal: true })}
+                      style={{
+                        padding: '14px 14px', borderRadius: 10, cursor: 'pointer', transition: 'all 0.15s',
+                        border: `2px dashed ${isSel ? '#457B9D' : '#457B9D60'}`,
+                        background: isSel ? '#457B9D12' : T.surface + '80',
+                      }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                        <span style={{ fontSize: 20 }}>{'\u{1F6E1}'}</span>
+                        <span style={{ ...F.display, fontSize: 16, color: T.text }}>Survive</span>
+                        {isSel && <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#457B9D', display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: 'auto' }}>
+                          <svg viewBox="0 0 12 12" width={7} height={7}><path d="M2 6L5 9L10 3" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                        </div>}
+                      </div>
+                      <div style={{ ...F.mono, fontSize: 10, color: T.muted }}>Hunker down. Rest and recover.</div>
+                      <div style={{ ...F.mono, fontSize: 9, color: '#457B9D', marginTop: 4 }}>0 GP · Recovering...</div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* LAST MOVE WARNING: GP = 0, one more move then desperation */}
+            {isLastMove && inMovePhase && (
+              <div style={{ padding: '6px 18px 0', flexShrink: 0 }}>
+                <div style={{ textAlign: 'center', padding: '8px 12px', background: '#ff222012', border: '1px solid #ff222040', borderRadius: 6, animation: 'lastMovePulse 1.5s ease-in-out infinite' }}>
+                  <div style={{ ...F.display, fontSize: 14, color: '#ff2222', letterSpacing: '0.08em' }}>LAST MOVE</div>
+                  <div style={{ ...F.mono, fontSize: 9, color: T.red }}>0 GP — choose wisely, then you're gassed</div>
+                </div>
+              </div>
+            )}
+
+            {/* State 3: Zero moves — Survive + Spaz */}
             {zeroMoves && (
               <div style={{ flex: 1, overflowY: 'auto', padding: '6px 18px 0', minHeight: 0 }}>
                 <div style={{ textAlign: 'center', marginBottom: 12 }}>
@@ -655,7 +772,7 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
                       </div>
                       <div style={{ ...F.mono, fontSize: 10, color: T.muted, marginBottom: 4 }}>{u.description}</div>
                       <div style={{ ...F.mono, fontSize: 9, color: isSurvive ? '#457B9D' : (canAfford ? '#E63946' : T.dim) }}>
-                        {isSurvive ? '0 GP \u2022 +1 recovery' : canAfford ? '3 GP \u2022 CHECKMATE RISK' : 'Not enough GP'}
+                        {isSurvive ? '0 GP \u2022 +1 recovery' : canAfford ? '4 GP \u2022 CHECKMATE RISK' : 'Not enough GP'}
                       </div>
                     </div>
                   );
@@ -672,73 +789,34 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
                 </div>
 
                 {console.log('[HAND DEBUG]', { stance: myStanceVal, movesCount: moves.length, moves: moves.map(m => m.name + '(' + m.type + ')') })}
+                <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 8, scrollSnapType: 'x mandatory' }}>
                 {moves.map(m => {
                   const tier = deckTiers[m.id] || 'trained';
                   const isDrilled = myDrilled.includes(m.id);
                   const effectiveTier = isDrilled ? 'drilled' : tier;
                   const effGP = getEffGP(m);
+                  const baseGP = m.gp_cost || GP_COSTS[m.type] || 1;
+                  const gpMod = effGP - baseGP;
                   const canAfford = myGp >= effGP;
                   const isSel = sel?.id === m.id && !sel?.isCounter;
-                  const td = TierDisplay[effectiveTier] || TierDisplay.trained;
-                  const typeColor = MTColors[m.type] || T.muted;
                   const hasVariant = !!variantMap[m.id];
-                  const isKnown = effectiveTier === 'known';
 
                   return (
-                    <div key={m.id} onClick={() => canAfford && setSel({ id: m.id, isCounter: false })} style={{
-                      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, marginBottom: 4,
-                      cursor: canAfford ? 'pointer' : 'default', opacity: canAfford ? (isKnown ? 0.55 : 1) : 0.3, transition: 'all 0.15s',
-                      position: 'relative', overflow: 'hidden',
-                      border: `1px solid ${isSel ? typeColor : isDrilled ? '#FFD700' + '50' : isKnown ? T.dim + '40' : T.border}`,
-                      background: isSel ? typeColor + '10' : isDrilled ? '#FFD700' + '08' : T.surface,
-                      boxShadow: isDrilled && !isSel ? '0 0 8px #FFD70015' : 'none',
-                    }}>
-                      {/* Left accent bar */}
-                      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: isSel ? typeColor : isDrilled ? '#FFD700' : isKnown ? T.dim + '40' : 'transparent', opacity: 0.7 }} />
-
-                      {/* Type icon */}
-                      <div style={{ width: 26, height: 26, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: typeColor + '14', position: 'relative' }}>
-                        <MoveIcon type={m.type} size={16} />
-                        {isDrilled && <span style={{ position: 'absolute', top: -4, right: -4, fontSize: 10, lineHeight: 1, color: '#FFD700', textShadow: '0 0 4px #FFD70080' }}>★</span>}
-                      </div>
-
-                      {/* Move info */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <span style={{ fontSize: 12, fontWeight: 600, fontFamily: T.body, color: isSel ? T.white : hasVariant ? T.gold : isKnown ? T.dim : T.text }}>
-                            {hasVariant ? variantMap[m.id].variant_name : m.name}
-                          </span>
-                          {hasVariant && <span style={{ color: T.gold, fontSize: 10, lineHeight: 1 }}>&#9670;</span>}
-                          {isDrilled && <span style={{ fontSize: 9, color: '#FFD700', lineHeight: 1 }}>★</span>}
-                          {!isDrilled && <span style={{ fontSize: 9, color: td.c, lineHeight: 1 }}>{td.sym}</span>}
-                        </div>
-                        <div style={{ ...F.mono, fontSize: 8, color: isKnown ? T.dim : T.muted, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}>
-                          <span style={{ fontSize: 7, padding: '1px 4px', borderRadius: 2, background: typeColor + '18', color: typeColor }}>{MTLabels[m.type] || 'MOVE'}</span>
-                          <span style={{ color: T.dim }}>
-                            {hasVariant ? m.name + ' > ' : ''}
-                            {m.to_position ? G.positions[m.to_position]?.name?.replace(/ \(.*\)/, '') : 'SUBMISSION'}
-                          </span>
-                          {isDrilled && <span style={{ color: T.green }}>+15%</span>}
-                          {isKnown && <span style={{ color: T.red }}>+1 GP</span>}
-                        </div>
-                      </div>
-
-                      {/* GP cost */}
-                      <div style={{ textAlign: 'center', flexShrink: 0, minWidth: 32 }}>
-                        {isDrilled && <div style={{ ...F.mono, fontSize: 8, color: T.green, textDecoration: 'line-through', textDecorationColor: T.muted }}>{m.gp_cost || GP_COSTS[m.type] || 1}</div>}
-                        <div style={{ ...F.display, fontSize: 16, lineHeight: 1, color: isDrilled ? '#FFD700' : isKnown ? T.red : !canAfford ? T.red : T.muted }}>{effGP}</div>
-                        <div style={{ ...F.mono, fontSize: 7, color: T.dim }}>GP</div>
-                      </div>
-
-                      {/* Selection check */}
-                      {isSel && (
-                        <div style={{ position: 'absolute', top: 6, right: 8, width: 16, height: 16, borderRadius: '50%', background: typeColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <svg viewBox="0 0 12 12" width={8} height={8}><path d="M2 6L5 9L10 3" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                        </div>
-                      )}
+                    <div key={m.id} style={{ opacity: canAfford ? 1 : 0.3, scrollSnapAlign: 'start' }}>
+                      <CompactCard
+                        move={{ ...m, name: hasVariant ? variantMap[m.id].variant_name : m.name }}
+                        type={m.type}
+                        tier={effectiveTier}
+                        gp={baseGP}
+                        gpMod={gpMod}
+                        selected={isSel}
+                        variant={hasVariant ? m.name : null}
+                        onClick={() => canAfford && setSel({ id: m.id, isCounter: false })}
+                      />
                     </div>
                   );
                 })}
+                </div>
 
                 {/* State 2: Survive card at bottom when GP < 3 */}
                 {showSurviveExtra && (() => {
@@ -817,16 +895,15 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
           const subRound = match?.sub_phase ?? 1;
 
           const attOpts = [
-            { id: 'squeeze', label: 'Tighten', desc: 'Commit fully', cost: 2, color: T.red },
+            { id: 'tighten', label: 'Tighten', desc: 'Commit fully', cost: 2, color: T.red },
             { id: 'adjust', label: 'Adjust', desc: 'Reposition grip', cost: 1, color: T.amber },
-            { id: 'transition_sub', label: 'Chain Sub', desc: 'Switch submission', cost: 1, color: T.purple },
+            { id: 'chain_sub', label: 'Chain Sub', desc: 'Switch submission', cost: 1, color: T.purple },
           ];
           const defOpts = [
-            { id: 'technical_escape', label: 'Tech Escape', desc: 'Strip the grip', cost: 1, color: T.teal },
+            { id: 'escape', label: 'Tech Escape', desc: 'Strip the grip', cost: 1, color: T.teal },
             { id: 'explode', label: 'Explode', desc: 'All-out burst', cost: 2, color: T.red },
             { id: 'survive', label: 'Survive', desc: 'Weather the storm', cost: 0, color: T.blue },
-            { id: 'sweep_scramble', label: 'Sweep', desc: 'Escape + position', cost: 2, color: T.amber },
-            { id: 'reversal_sub', label: 'Reversal', desc: 'Counter-submission', cost: 3, color: T.gold },
+            { id: 'counter', label: 'Counter', desc: 'Sweep or counter-sub', cost: 2, color: T.gold },
           ];
           const opts = isAtt ? attOpts : defOpts;
 
@@ -844,6 +921,13 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
                   <div style={{ ...F.display, fontSize: 22, color: T.text, marginTop: 2 }}>{subTech?.name || 'Submission'}</div>
                 )}
                 <div style={{ ...F.mono, fontSize: 11, color: T.muted, marginTop: 4 }}>{isAtt ? 'Finish it!' : 'Escape or survive!'}</div>
+              </div>
+
+              {/* GP drain display */}
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginBottom: 8 }}>
+                <span style={{ ...F.mono, fontSize: 9, color: T.red }}>You: GP {myGp} ▼-1/rd</span>
+                <span style={{ ...F.mono, fontSize: 9, color: T.dim }}>|</span>
+                <span style={{ ...F.mono, fontSize: 9, color: T.red }}>Opp: GP {oppGp} ▼-1/rd</span>
               </div>
 
               {/* Tighten meter — animated */}
@@ -867,16 +951,16 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
               {subReveal && (
                 <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginBottom: 12, animation: 'fadeUp 0.3s ease-out' }}>
                   <div style={{ flex: 1, padding: '8px 10px', borderRadius: 8, textAlign: 'center',
-                    background: subReveal.myChoice === 'squeeze' ? T.red + '18' : subReveal.myChoice === 'adjust' ? T.amber + '18' : subReveal.myChoice === 'transition_sub' ? T.purple + '18' : subReveal.myChoice === 'technical_escape' ? T.teal + '18' : subReveal.myChoice === 'explode' ? T.red + '18' : T.blue + '18',
-                    border: `1px solid ${subReveal.myChoice === 'squeeze' ? T.red : subReveal.myChoice === 'adjust' ? T.amber : subReveal.myChoice === 'transition_sub' ? T.purple : subReveal.myChoice === 'technical_escape' ? T.teal : subReveal.myChoice === 'explode' ? T.red : T.blue}40`,
+                    background: subReveal.myChoice === 'tighten' ? T.red + '18' : subReveal.myChoice === 'adjust' ? T.amber + '18' : subReveal.myChoice === 'chain_sub' ? T.purple + '18' : subReveal.myChoice === 'escape' ? T.teal + '18' : subReveal.myChoice === 'explode' ? T.red + '18' : subReveal.myChoice === 'counter' ? T.gold + '18' : T.blue + '18',
+                    border: `1px solid ${subReveal.myChoice === 'tighten' ? T.red : subReveal.myChoice === 'adjust' ? T.amber : subReveal.myChoice === 'chain_sub' ? T.purple : subReveal.myChoice === 'escape' ? T.teal : subReveal.myChoice === 'explode' ? T.red : subReveal.myChoice === 'counter' ? T.gold : T.blue}40`,
                   }}>
                     <div style={{ ...F.mono, fontSize: 8, color: T.muted, marginBottom: 2 }}>YOU</div>
                     <div style={{ ...F.body, fontSize: 11, fontWeight: 600, color: T.text }}>{subReveal.myChoice?.replace('_', ' ')}</div>
                   </div>
                   <div style={{ ...F.mono, fontSize: 9, color: T.dim, alignSelf: 'center' }}>vs</div>
                   <div style={{ flex: 1, padding: '8px 10px', borderRadius: 8, textAlign: 'center',
-                    background: subReveal.oppChoice === 'squeeze' ? T.red + '18' : subReveal.oppChoice === 'adjust' ? T.amber + '18' : subReveal.oppChoice === 'transition_sub' ? T.purple + '18' : subReveal.oppChoice === 'technical_escape' ? T.teal + '18' : subReveal.oppChoice === 'explode' ? T.red + '18' : T.blue + '18',
-                    border: `1px solid ${subReveal.oppChoice === 'squeeze' ? T.red : subReveal.oppChoice === 'adjust' ? T.amber : subReveal.oppChoice === 'transition_sub' ? T.purple : subReveal.oppChoice === 'technical_escape' ? T.teal : subReveal.oppChoice === 'explode' ? T.red : T.blue}40`,
+                    background: subReveal.oppChoice === 'tighten' ? T.red + '18' : subReveal.oppChoice === 'adjust' ? T.amber + '18' : subReveal.oppChoice === 'chain_sub' ? T.purple + '18' : subReveal.oppChoice === 'escape' ? T.teal + '18' : subReveal.oppChoice === 'explode' ? T.red + '18' : subReveal.oppChoice === 'counter' ? T.gold + '18' : T.blue + '18',
+                    border: `1px solid ${subReveal.oppChoice === 'tighten' ? T.red : subReveal.oppChoice === 'adjust' ? T.amber : subReveal.oppChoice === 'chain_sub' ? T.purple : subReveal.oppChoice === 'escape' ? T.teal : subReveal.oppChoice === 'explode' ? T.red : subReveal.oppChoice === 'counter' ? T.gold : T.blue}40`,
                   }}>
                     <div style={{ ...F.mono, fontSize: 8, color: T.muted, marginBottom: 2 }}>OPP</div>
                     <div style={{ ...F.body, fontSize: 11, fontWeight: 600, color: T.text }}>{subReveal.oppChoice?.replace('_', ' ')}</div>
@@ -899,25 +983,39 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
               </div>
 
               {/* Options */}
-              {!myLk && opts.map(o => {
-                const oSel = subSel === o.id;
-                return (
-                  <div key={o.id} onClick={() => myGp >= o.cost && setSubSel(o.id)} style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '12px 14px', marginBottom: 5, borderRadius: 8, cursor: myGp >= o.cost ? 'pointer' : 'default',
-                    opacity: myGp >= o.cost ? 1 : 0.35, transition: 'all 0.15s',
-                    background: oSel ? o.color + '10' : T.surface,
-                    border: `1px solid ${oSel ? o.color : T.border}`,
-                    borderLeft: `3px solid ${oSel ? o.color : T.border}`,
-                  }}>
-                    <div>
-                      <div style={{ ...F.body, fontSize: 13, fontWeight: 600, color: oSel ? T.text : T.muted }}>{o.label}</div>
-                      <div style={{ ...F.mono, fontSize: 10, color: T.dim }}>{o.desc}</div>
+              {!myLk && (() => {
+                const chainOpts = isAtt ? getChainSubOptions() : [];
+                const counterOpts = isAtt ? [] : getCounterOptions();
+                return opts.map(o => {
+                  const oSel = subSel === o.id;
+                  // Grey out chain_sub/counter if no techniques available
+                  const needsTech = o.id === 'chain_sub' || o.id === 'counter';
+                  const techPool = o.id === 'chain_sub' ? chainOpts : o.id === 'counter' ? counterOpts : [];
+                  const noTechs = needsTech && techPool.length === 0;
+                  const canUse = myGp >= o.cost && !noTechs;
+                  return (
+                    <div key={o.id} onClick={() => canUse && setSubSel(o.id)} style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '12px 14px', marginBottom: 5, borderRadius: 8, cursor: canUse ? 'pointer' : 'default',
+                      opacity: canUse ? 1 : 0.35, transition: 'all 0.15s',
+                      background: oSel ? o.color + '10' : T.surface,
+                      border: `1px solid ${oSel ? o.color : T.border}`,
+                      borderLeft: `3px solid ${oSel ? o.color : T.border}`,
+                    }}>
+                      <div>
+                        <div style={{ ...F.body, fontSize: 13, fontWeight: 600, color: oSel ? T.text : T.muted }}>{o.label}</div>
+                        <div style={{ ...F.mono, fontSize: 10, color: T.dim }}>
+                          {noTechs ? 'No techniques available' : o.desc}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {needsTech && !noTechs && <span style={{ ...F.mono, fontSize: 8, color: T.dim }}>{techPool.length} opts</span>}
+                        <span style={{ ...F.mono, fontSize: 10, color: T.amber, fontWeight: 700 }}>{o.cost}GP</span>
+                      </div>
                     </div>
-                    <span style={{ ...F.mono, fontSize: 10, color: T.amber, fontWeight: 700 }}>{o.cost}GP</span>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
 
               {myLk && (
                 <div style={{ textAlign: 'center', padding: 20 }}>
@@ -926,13 +1024,82 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
                 </div>
               )}
 
-              {!myLk && (
+              {!myLk && !subPickerFor && (
                 <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '10px 18px 28px', background: `linear-gradient(180deg, transparent 0%, ${T.bg} 40%)` }}>
                   <Btn onClick={lockSubChoice} disabled={!subSel || busy} style={{ background: subSel ? `linear-gradient(135deg, ${T.red}, #c0392b)` : undefined }}>
                     {busy ? <Spinner /> : subSel ? 'Lock In' : 'Select an Option'}
                   </Btn>
                 </div>
               )}
+
+              {/* ── TECHNIQUE PICKER (chain sub / counter) ──── */}
+              {subPickerFor && (() => {
+                const techs = subPickerFor === 'chain_sub' ? getChainSubOptions() : getCounterOptions();
+                const pickerLabel = subPickerFor === 'chain_sub' ? 'Chain To...' : 'Counter With...';
+                const pickerColor = subPickerFor === 'chain_sub' ? T.purple : T.gold;
+                return (
+                  <div style={{
+                    position: 'absolute', bottom: 0, left: 0, right: 0, top: 0, zIndex: 20,
+                    background: T.bg + 'F0', display: 'flex', flexDirection: 'column',
+                    animation: 'fadeUp 0.2s ease-out',
+                  }}>
+                    {/* Picker header */}
+                    <div style={{ padding: '14px 18px 10px', borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div>
+                          <div style={{ ...F.mono, fontSize: 9, color: pickerColor, letterSpacing: '0.1em', textTransform: 'uppercase' }}>{pickerLabel}</div>
+                          <div style={{ ...F.mono, fontSize: 10, color: T.dim, marginTop: 2 }}>{techs.length} technique{techs.length !== 1 ? 's' : ''} available</div>
+                        </div>
+                        <button onClick={() => { setSubPickerFor(null); setSubPickerTechId(null); setSubSel(null); }} style={{
+                          background: 'none', border: `1px solid ${T.border}`, borderRadius: 4, padding: '4px 10px',
+                          fontFamily: T.mono, fontSize: 9, color: T.muted, cursor: 'pointer',
+                        }}>Cancel</button>
+                      </div>
+                    </div>
+
+                    {/* Technique list */}
+                    <div style={{ flex: 1, overflowY: 'auto', padding: '8px 18px' }}>
+                      {techs.map(t => {
+                        const tech = G.techniques[t.id];
+                        if (!tech) return null;
+                        const isSel = subPickerTechId === t.id;
+                        const tc = MTColors[tech.type] || T.muted;
+                        const toPos = tech.to_position ? G.positions[tech.to_position] : null;
+                        return (
+                          <div key={t.id} onClick={() => setSubPickerTechId(t.id)} style={{
+                            display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px',
+                            marginBottom: 4, borderRadius: 8, cursor: 'pointer', transition: 'all 0.15s',
+                            background: isSel ? pickerColor + '12' : T.surface,
+                            border: `1px solid ${isSel ? pickerColor : T.border}`,
+                            borderLeft: `3px solid ${isSel ? pickerColor : T.border}`,
+                          }}>
+                            <MoveIcon type={tech.type} size={16} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ ...F.body, fontSize: 13, fontWeight: 600, color: isSel ? T.white : T.text }}>{tech.name}</div>
+                              <div style={{ ...F.mono, fontSize: 8, color: T.dim, display: 'flex', gap: 4, marginTop: 1 }}>
+                                <span style={{ padding: '1px 4px', borderRadius: 2, background: tc + '18', color: tc }}>{MTLabels[tech.type] || 'MOVE'}</span>
+                                {toPos && <span>→ {toPos.name?.replace(/ \(.*\)/, '')}</span>}
+                              </div>
+                            </div>
+                            {isSel && (
+                              <div style={{ width: 16, height: 16, borderRadius: '50%', background: pickerColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <svg viewBox="0 0 12 12" width={8} height={8}><path d="M2 6L5 9L10 3" stroke="#fff" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Confirm button */}
+                    <div style={{ flexShrink: 0, padding: '10px 18px 28px', borderTop: `1px solid ${T.border}`, background: `linear-gradient(0deg, ${T.bg}, transparent)` }}>
+                      <Btn onClick={lockSubChoice} disabled={!subPickerTechId || busy} style={{ background: subPickerTechId ? `linear-gradient(135deg, ${pickerColor}, ${pickerColor}CC)` : undefined }}>
+                        {busy ? <Spinner /> : subPickerTechId ? `Lock In ${subPickerFor === 'chain_sub' ? 'Chain Sub' : 'Counter'}` : 'Pick a Technique'}
+                      </Btn>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           );
         })()}
@@ -960,52 +1127,24 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
 
           <div style={{ ...F.mono, fontSize: 9, letterSpacing: '0.2em', color: T.muted, textTransform: 'uppercase', marginBottom: 20, zIndex: 2 }}>Turn {revealData.turn} -- Reveal</div>
 
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 20, zIndex: 2 }}>
+          <div style={{ display: 'flex', gap: 20, alignItems: 'center', marginBottom: 20, zIndex: 2 }}>
             {/* Your card */}
-            <div style={{ width: 130, height: 155, perspective: 700 }}>
-              <div style={{ width: '100%', height: '100%', position: 'relative', transformStyle: 'preserve-3d', transition: 'transform 0.6s cubic-bezier(0.4,0,0.2,1)', transform: yourFlipped ? 'rotateY(180deg)' : 'none' }}>
-                {/* Card back */}
-                <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', borderRadius: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, background: T.surface2, border: `1px solid ${T.border}` }}>
-                  <div style={{ width: 36, height: 36, borderRadius: '50%', border: `1px solid ${T.borderB}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div style={{ width: 22, height: 22, borderRadius: '50%', border: `1px solid ${T.border}` }} />
-                  </div>
-                  <div style={{ ...F.display, fontSize: 10, letterSpacing: '0.1em', color: T.borderB }}>OPEN MAT</div>
-                </div>
-                {/* Card front */}
-                <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', transform: 'rotateY(180deg)', borderRadius: 6, display: 'flex', flexDirection: 'column', padding: 14, background: '#2a0810', border: `1px solid ${T.red}` }}>
-                  <div style={{ ...F.mono, fontSize: 8, color: T.red, textTransform: 'uppercase', marginBottom: 4 }}>You played</div>
-                  <div style={{ ...F.mono, fontSize: 7, padding: '2px 5px', border: `1px solid ${T.red}`, borderRadius: 2, color: T.red, textTransform: 'uppercase', alignSelf: 'flex-start', marginBottom: 8 }}>{MTLabels[revealData?.myMoveType] || 'MOVE'}</div>
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                    <div style={{ ...F.display, fontSize: 22, color: '#fff', lineHeight: 1.1 }}>{revealData?.myMoveName || 'Your Move'}</div>
-                  </div>
-                  <div style={{ ...F.mono, fontSize: 8, color: T.muted }}>{myStanceVal}</div>
-                </div>
-              </div>
-            </div>
+            <FlipCard
+              move={{ name: revealData?.myMoveName || 'Your Move', from_position: null, to_position: null }}
+              type={revealData?.myMoveType || 'transition'}
+              isOpponent={false}
+              flipped={yourFlipped}
+            />
 
             <div style={{ ...F.display, fontSize: 11, color: T.dim, zIndex: 2 }}>VS</div>
 
             {/* Opp card */}
-            <div style={{ width: 130, height: 155, perspective: 700 }}>
-              <div style={{ width: '100%', height: '100%', position: 'relative', transformStyle: 'preserve-3d', transition: 'transform 0.6s cubic-bezier(0.4,0,0.2,1)', transform: oppFlipped ? 'rotateY(180deg)' : 'none' }}>
-                {/* Card back */}
-                <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', borderRadius: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, background: T.surface2, border: `1px solid ${T.border}` }}>
-                  <div style={{ width: 36, height: 36, borderRadius: '50%', border: `1px solid ${T.borderB}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div style={{ width: 22, height: 22, borderRadius: '50%', border: `1px solid ${T.border}` }} />
-                  </div>
-                  <div style={{ ...F.display, fontSize: 10, letterSpacing: '0.1em', color: T.borderB }}>OPEN MAT</div>
-                </div>
-                {/* Card front */}
-                <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', transform: 'rotateY(180deg)', borderRadius: 6, display: 'flex', flexDirection: 'column', padding: 14, background: '#050d1a', border: `1px solid ${T.blue}` }}>
-                  <div style={{ ...F.mono, fontSize: 8, color: T.blue, textTransform: 'uppercase', marginBottom: 4 }}>Opponent</div>
-                  <div style={{ ...F.mono, fontSize: 7, padding: '2px 5px', border: `1px solid ${T.blue}`, borderRadius: 2, color: T.blue, textTransform: 'uppercase', alignSelf: 'flex-start', marginBottom: 8 }}>{MTLabels[revealData?.oppMoveType] || 'MOVE'}</div>
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                    <div style={{ ...F.display, fontSize: 20, color: '#7aaee0', lineHeight: 1.1 }}>{revealData?.oppMoveName || 'Defended'}</div>
-                  </div>
-                  <div style={{ ...F.mono, fontSize: 8, color: T.muted }}>{opp.display_name}</div>
-                </div>
-              </div>
-            </div>
+            <FlipCard
+              move={{ name: revealData?.oppMoveName || 'Defended', from_position: null, to_position: null }}
+              type={revealData?.oppMoveType || 'transition'}
+              isOpponent={true}
+              flipped={oppFlipped}
+            />
           </div>
 
           {/* Result */}
@@ -1113,6 +1252,8 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
         @keyframes fadeUp { 0% { opacity: 0; transform: translateY(8px); } 100% { opacity: 1; transform: translateY(0); } }
         @keyframes chainGold { 0% { opacity: 0; transform: translateX(-20px); } 100% { opacity: 1; transform: translateX(0); } }
         @keyframes escapeBurst { 0% { transform: scale(0); opacity: 0; } 50% { transform: scale(1.2); } 100% { transform: scale(1); opacity: 1; } }
+        @keyframes desperationPulse { 0%, 100% { border-color: #ff222240; } 50% { border-color: #ff222280; } }
+        @keyframes lastMovePulse { 0%, 100% { opacity: 0.8; } 50% { opacity: 1; } }
       `}</style>
     </div>
   );

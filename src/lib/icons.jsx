@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════
-// OPEN MAT — SVG ICON LIBRARY
+// OPEN MAT — SVG ICON LIBRARY (LIGHT MODE)
 // Zero emojis. Every icon encodes physics, not pictures.
 // ═══════════════════════════════════════════════════════════
 
@@ -81,8 +81,8 @@ export const StanceIcon = ({ stance, size = 20 }) => {
   );
   return (
     <svg viewBox="0 0 28 28" fill="none" width={size} height={size}>
-      <path d="M14 24C14 24 8 20 8 16C8 12 14 12 14 16C14 20 20 20 20 14C20 8 14 4 14 4" stroke={T.amber} strokeWidth="1.5" strokeLinecap="round" fill="none"/>
-      <circle cx="14" cy="4" r="1.5" fill={T.amber} opacity="0.5"/>
+      <path d="M14 24C14 24 8 20 8 16C8 12 14 12 14 16C14 20 20 20 20 14C20 8 14 4 14 4" stroke={T.gold} strokeWidth="1.5" strokeLinecap="round" fill="none"/>
+      <circle cx="14" cy="4" r="1.5" fill={T.gold} opacity="0.5"/>
     </svg>
   );
 };
@@ -92,19 +92,19 @@ export const ArchIcon = ({ id, s = 28 }) => {
   const icons = {
     wrestler: (
       <svg viewBox="0 0 32 32" fill="none" width={s} height={s}>
-        <circle cx="16" cy="8" r="4" fill={T.green} opacity="0.4"/>
-        <line x1="16" y1="12" x2="16" y2="24" stroke={T.green} strokeWidth="2.5" strokeLinecap="round"/>
-        <path d="M11 20L16 26L21 20" stroke={T.green} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        <line x1="8" y1="28" x2="24" y2="28" stroke={T.green} strokeWidth="1.5" strokeLinecap="round" opacity="0.3"/>
+        <circle cx="16" cy="8" r="4" fill={T.td} opacity="0.4"/>
+        <line x1="16" y1="12" x2="16" y2="24" stroke={T.td} strokeWidth="2.5" strokeLinecap="round"/>
+        <path d="M11 20L16 26L21 20" stroke={T.td} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        <line x1="8" y1="28" x2="24" y2="28" stroke={T.td} strokeWidth="1.5" strokeLinecap="round" opacity="0.3"/>
       </svg>
     ),
     guard_puller: (
       <svg viewBox="0 0 32 32" fill="none" width={s} height={s}>
-        <circle cx="16" cy="16" r="11" stroke={T.teal} strokeWidth="2" fill={`${T.teal}08`}/>
-        <circle cx="16" cy="5" r="2" fill={T.teal} opacity="0.6"/>
-        <line x1="8" y1="10" x2="12" y2="13" stroke={T.teal} strokeWidth="1.2" strokeLinecap="round" opacity="0.4"/>
-        <line x1="24" y1="10" x2="20" y2="13" stroke={T.teal} strokeWidth="1.2" strokeLinecap="round" opacity="0.4"/>
-        <circle cx="16" cy="24" r="2.5" fill={T.teal} opacity="0.35"/>
+        <circle cx="16" cy="16" r="11" stroke={T.purple} strokeWidth="2" fill={`${T.purple}08`}/>
+        <circle cx="16" cy="5" r="2" fill={T.purple} opacity="0.6"/>
+        <line x1="8" y1="10" x2="12" y2="13" stroke={T.purple} strokeWidth="1.2" strokeLinecap="round" opacity="0.4"/>
+        <line x1="24" y1="10" x2="20" y2="13" stroke={T.purple} strokeWidth="1.2" strokeLinecap="round" opacity="0.4"/>
+        <circle cx="16" cy="24" r="2.5" fill={T.purple} opacity="0.35"/>
       </svg>
     ),
     leg_locker: (
@@ -130,9 +130,9 @@ export const ArchIcon = ({ id, s = 28 }) => {
     ),
     scrambler: (
       <svg viewBox="0 0 32 32" fill="none" width={s} height={s}>
-        <rect x="4" y="6" width="13" height="8" rx="3" fill={T.amber} opacity="0.5" transform="rotate(-25,10,10)"/>
-        <rect x="15" y="18" width="13" height="8" rx="3" fill={T.amber} opacity="0.5" transform="rotate(20,21,22)"/>
-        <circle cx="16" cy="16" r="2" fill={T.amber} opacity="0.4"/>
+        <rect x="4" y="6" width="13" height="8" rx="3" fill={T.gold} opacity="0.5" transform="rotate(-25,10,10)"/>
+        <rect x="15" y="18" width="13" height="8" rx="3" fill={T.gold} opacity="0.5" transform="rotate(20,21,22)"/>
+        <circle cx="16" cy="16" r="2" fill={T.gold} opacity="0.4"/>
       </svg>
     ),
   };
@@ -141,9 +141,13 @@ export const ArchIcon = ({ id, s = 28 }) => {
 
 // ── OPEN MAT LOGO ──────────────────────────────────────────
 export const Logo = ({ size = 64 }) => (
-  <svg viewBox="0 0 64 64" fill="none" width={size} height={size}>
-    <polygon points="32,6 4,56 60,56" stroke={T.you} strokeWidth="2" fill="none" strokeLinejoin="round"/>
-    <path d="M32 24L40 32L32 40L24 32Z" stroke={T.you} strokeWidth="1.5" fill={`${T.you}15`}/>
-    <circle cx="32" cy="32" r="3" fill={T.you} opacity="0.5"/>
-  </svg>
+  <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+    <div style={{
+      width: size * 0.5, height: size * 0.5, borderRadius: size * 0.12,
+      background: "#111827", display: "flex",
+      alignItems: "center", justifyContent: "center",
+    }}>
+      <span style={{ fontFamily: T.display, fontSize: size * 0.25, color: "#FFFFFF", letterSpacing: "0.04em" }}>O</span>
+    </div>
+  </div>
 );
