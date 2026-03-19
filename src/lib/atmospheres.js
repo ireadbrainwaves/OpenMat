@@ -48,10 +48,10 @@ export function getTightenAtmosphere(tighten) {
  * @param {number} tighten — 0-5
  */
 export function getTightenEdgeGlow(tighten) {
-  if (tighten >= 4) return 'inset 0 0 100px rgba(194,48,40,0.12)';
-  if (tighten >= 3) return 'inset 0 0 80px rgba(194,48,40,0.08)';
-  if (tighten >= 2) return 'inset 0 0 60px rgba(194,48,40,0.05)';
-  if (tighten >= 1) return 'inset 0 0 50px rgba(194,48,40,0.03)';
+  if (tighten >= 4) return 'inset 0 0 60px rgba(194,48,40,0.06)';
+  if (tighten >= 3) return 'inset 0 0 40px rgba(194,48,40,0.04)';
+  if (tighten >= 2) return 'none';
+  if (tighten >= 1) return 'none';
   return 'none';
 }
 

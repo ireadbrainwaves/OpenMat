@@ -81,7 +81,7 @@ export default function HomeScreen({ user, profile, onNavigate }) {
   return (
     <div style={{ padding: "20px" }}>
       {/* Hero card */}
-      <div style={{ padding: "20px", background: '#FFFFFF', border: `1px solid ${T.border}`, borderRadius: 14, marginBottom: 16, boxShadow: T.shadowMd, animation: 'fadeSlideUp 0.4s var(--ease-out-expo) 0.1s both' }}>
+      <div style={{ padding: "20px", background: '#FFFFFF', border: `1px solid ${T.border}`, borderRadius: 14, marginBottom: 16, boxShadow: T.shadowMd,  }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
           <div style={{ width: 56, height: 56, borderRadius: "50%", background: `${archColor}08`, border: `2px solid ${archColor}20`, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <ArchIcon id={profile.archetype} s={32}/>
@@ -114,7 +114,7 @@ export default function HomeScreen({ user, profile, onNavigate }) {
             { label: "Subs", value: `${subs}`, color: T.red },
             { label: "Matches", value: `${profile.matches_played || 0}`, color: T.muted },
           ].map((s, i) => (
-            <div key={s.label} style={{ textAlign: "center", animation: `fadeSlideUp 0.3s var(--ease-out-expo) ${0.3 + i * 0.1}s both` }}>
+            <div key={s.label} style={{ textAlign: "center",  }}>
               <div style={{ color: s.color, fontWeight: 600, fontSize: 14 }}>{s.value}</div>
               <div style={{ color: T.dim, fontSize: 9 }}>{s.label}</div>
             </div>
@@ -124,7 +124,7 @@ export default function HomeScreen({ user, profile, onNavigate }) {
 
       {/* Progression */}
       {progressTarget && (
-        <div style={{ padding: "14px", background: '#FFFFFF', border: `1px solid ${T.border}`, borderRadius: 10, marginBottom: 16, boxShadow: T.shadowSm, animation: 'fadeSlideUp 0.3s var(--ease-out-expo) 0.4s both' }}>
+        <div style={{ padding: "14px", background: '#FFFFFF', border: `1px solid ${T.border}`, borderRadius: 10, marginBottom: 16, boxShadow: T.shadowSm,  }}>
           <div style={{ fontFamily: F.mono, fontSize: 9, color: T.dim, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>
             Next: {progressTarget}
           </div>
@@ -134,7 +134,7 @@ export default function HomeScreen({ user, profile, onNavigate }) {
       )}
 
       {/* CTAs */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 16, animation: 'fadeSlideUp 0.3s var(--ease-out-expo) 0.5s both' }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16,  }}>
         <button onClick={() => onNavigate("lobby")} style={{
           flex: 1, padding: "16px", background: '#111827', border: "none", borderRadius: 10,
           fontFamily: F.display, fontSize: 18, color: "#fff", cursor: "pointer",
@@ -153,7 +153,7 @@ export default function HomeScreen({ user, profile, onNavigate }) {
             const won = m.winner_id === user.id;
             const method = m.win_method || "points";
             return (
-              <div key={m.id || i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: '#FFFFFF', border: `1px solid ${T.border}`, borderRadius: 8, marginBottom: 6, boxShadow: T.shadowSm, animation: `fadeSlideUp 0.3s var(--ease-out-expo) ${0.6 + i * 0.08}s both` }}>
+              <div key={m.id || i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: '#FFFFFF', border: `1px solid ${T.border}`, borderRadius: 8, marginBottom: 6, boxShadow: T.shadowSm,  }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontFamily: F.display, fontSize: 14, color: T.text }}>vs Opponent</div>
                   <div style={{ fontFamily: F.mono, fontSize: 9, color: T.dim }}>{method} · {m.current_turn || "?"}t</div>

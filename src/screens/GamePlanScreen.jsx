@@ -88,7 +88,7 @@ export default function GamePlanScreen({ profile, matchId, opponent: oppProp, on
   const oppAnimal = opponent ? ARCHETYPE_ANIMALS[opponent.archetype] || '' : '';
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", animation: "fadeSlideUp 0.3s var(--ease-out-expo)", background: T.bg }}>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: T.bg }}>
       <div style={{ flex: 1, padding: "20px 20px 100px", overflowY: "auto" }}>
         <div style={{ fontFamily: F.display, fontSize: 24, color: T.text, marginBottom: 16 }}>Game Plan</div>
 

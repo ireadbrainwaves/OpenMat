@@ -1,14 +1,15 @@
 // ═══════════════════════════════════════════════════════════
-// MATCH — OVERLAYS (Animated)
-// Reveal sequence, TAP, Finish, Escaped, Caught overlays
-// Uses animations.js helpers for particles, text reveal, shakes
+// MATCH — OVERLAYS
+// Color field overlays: TAP, ESCAPED, CAUGHT, Finish
+// Turn reveal with stillness beats
+// The screen IS the emotion. Color replaces the world.
 // ═══════════════════════════════════════════════════════════
 
 import React from 'react';
 const { useRef, useEffect, useState } = React;
 import { T } from '../../lib/tokens';
 import { FlipCard } from '../../components/MoveCard';
-import { revealText, burstParticles, screenShake } from '../../lib/animations';
+import { impactFlash, blackout, screenShake } from '../../lib/animations';
 import { getOutcomeColor } from '../../lib/atmospheres';
 
 const F = {
@@ -16,314 +17,296 @@ const F = {
   mono: { fontFamily: T.mono },
 };
 
+// ── COLOR PALETTE ────────────────────────────────────────
+const FINISH_COLORS = {
+  tap_loss:  { bg: '#3D0C10', text: '#E8C4B8', divider: '#E8C4B820' },
+  tap_win:   { bg: '#1A0A02', text: '#D4A847', divider: '#D4A84720' },
+  escaped:   { bg: '#0A1F1A', text: '#A8E0D0', divider: '#A8E0D020' },
+  caught:    { bg: '#0D0306', text: '#C23028', divider: '#C2302820' },
+  victory:   { bg: '#0A1F1A', text: '#A8E0D0', divider: '#A8E0D020' },
+  defeat:    { bg: '#3D0C10', text: '#E8C4B8', divider: '#E8C4B820' },
+  sweep:     { bg: '#F0E8D8', text: '#1A0F04', divider: '#1A0F0420' },
+};
+
 // ── REVEAL OVERLAY ───────────────────────────────────────
-export function RevealOverlay({ revealData, yourFlipped, oppFlipped, showResult, onDismiss, matchContainerRef, particleContainerRef }) {
+export function RevealOverlay({ revealData, yourFlipped, oppFlipped, showResult, onDismiss, matchContainerRef }) {
   if (!revealData) return null;
 
   const outcomeColor = getOutcomeColor(revealData.result);
-  const headlineRef = useRef(null);
-  const [flashVisible, setFlashVisible] = useState(true);
 
-  // Orchestrate reveal sequence
+  // Impact flash + shake on mount
   useEffect(() => {
     if (!revealData) return;
-
-    // T+0ms: Flash + screen shake
-    if (matchContainerRef?.current) screenShake(matchContainerRef.current);
-    setFlashVisible(true);
-    const t1 = setTimeout(() => setFlashVisible(false), 500);
-
-    // T+450ms: Your card particle burst
-    const t2 = setTimeout(() => {
-      if (particleContainerRef?.current) {
-        const rect = particleContainerRef.current.getBoundingClientRect();
-        burstParticles(particleContainerRef.current, rect.width * 0.35, rect.height * 0.45, outcomeColor, 10);
-      }
-    }, 450);
-
-    // T+820ms: Opp card particle burst
-    const t3 = setTimeout(() => {
-      if (particleContainerRef?.current) {
-        const rect = particleContainerRef.current.getBoundingClientRect();
-        burstParticles(particleContainerRef.current, rect.width * 0.65, rect.height * 0.45, T.trans, 8);
-      }
-    }, 820);
-
-    // T+1300ms: Headline text reveal
-    const t4 = setTimeout(() => {
-      if (headlineRef.current && revealData.description) {
-        revealText(headlineRef.current, revealData.description, outcomeColor, 35);
-      }
-    }, 1300);
-
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); };
+    if (matchContainerRef?.current) {
+      screenShake(matchContainerRef.current);
+      impactFlash(matchContainerRef.current, outcomeColor, 0.10, 200);
+    }
   }, [revealData]);
 
   return (
-    <div onClick={onDismiss} style={{ position: 'absolute', inset: 0, zIndex: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: T.bg, cursor: 'pointer' }}>
-      {/* Flash overlay */}
-      {flashVisible && (
-        <div style={{
-          position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none',
-          background: `radial-gradient(ellipse at 50% 40%, ${outcomeColor}10 0%, transparent 70%)`,
-          animation: 'fadeIn 0.1s ease-out, fadeSlideUp 0.5s ease-out reverse forwards',
-          animationDelay: '0s, 0.1s',
-        }} />
-      )}
-
+    <div onClick={onDismiss} style={{
+      position: 'absolute', inset: 0, zIndex: 60,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      background: T.bg, cursor: 'pointer',
+    }}>
       {/* Grid bg */}
       <div style={{ position: 'absolute', inset: 0, backgroundImage: `linear-gradient(${T.border} 1px, transparent 1px), linear-gradient(90deg, ${T.border} 1px, transparent 1px)`, backgroundSize: '20px 20px', opacity: 0.1 }} />
 
-      {/* Turn label */}
-      <div style={{ ...F.mono, fontSize: 9, letterSpacing: '0.2em', color: T.muted, textTransform: 'uppercase', marginBottom: 20, zIndex: 2, animation: 'fadeSlideDown 0.3s var(--ease-out-expo) 0.15s both' }}>
+      {/* Turn label — just there */}
+      <div style={{ ...F.mono, fontSize: 9, letterSpacing: '0.2em', color: T.muted, textTransform: 'uppercase', marginBottom: 20, zIndex: 2 }}>
         Turn {revealData.turn} — Reveal
       </div>
 
       {/* Cards */}
       <div style={{ display: 'flex', gap: 20, alignItems: 'center', marginBottom: 20, zIndex: 2 }}>
-        <div style={{ animation: 'fadeSlideUp 0.3s var(--ease-out-expo) 0.2s both' }}>
-          <FlipCard
-            move={{ name: revealData?.myMoveName || 'Your Move', from_position: null, to_position: null }}
-            type={revealData?.myMoveType || 'transition'}
-            isOpponent={false}
-            flipped={yourFlipped}
-          />
-        </div>
-        <div style={{ ...F.display, fontSize: 11, color: T.dim, zIndex: 2, animation: 'fadeIn 0.2s var(--ease-standard) 0.25s both' }}>VS</div>
-        <div style={{ animation: 'fadeSlideUp 0.3s var(--ease-out-expo) 0.3s both' }}>
-          <FlipCard
-            move={{ name: revealData?.oppMoveName || 'Defended', from_position: null, to_position: null }}
-            type={revealData?.oppMoveType || 'transition'}
-            isOpponent={true}
-            flipped={oppFlipped}
-          />
-        </div>
+        <FlipCard
+          move={{ name: revealData?.myMoveName || 'Your Move', from_position: null, to_position: null }}
+          type={revealData?.myMoveType || 'transition'}
+          isOpponent={false}
+          flipped={yourFlipped}
+        />
+        <div style={{ ...F.display, fontSize: 11, color: T.dim, zIndex: 2 }}>VS</div>
+        <FlipCard
+          move={{ name: revealData?.oppMoveName || 'Defended', from_position: null, to_position: null }}
+          type={revealData?.oppMoveType || 'transition'}
+          isOpponent={true}
+          flipped={oppFlipped}
+        />
       </div>
 
-      {/* Result area */}
-      <div style={{ zIndex: 2, textAlign: 'center', opacity: showResult ? 1 : 0, transform: showResult ? 'translateY(0)' : 'translateY(12px)', transition: 'opacity 0.4s, transform 0.4s' }}>
+      {/* Result — appears, no animation. Like a scoreboard update. */}
+      <div style={{
+        zIndex: 2, textAlign: 'center',
+        opacity: showResult ? 1 : 0,
+        transition: 'opacity 0.15s',
+      }}>
         {revealData.variantName && (
-          <div style={{ marginBottom: 6, animation: 'fadeSlideUp 0.4s var(--ease-out-expo)' }}>
+          <div style={{ marginBottom: 6 }}>
             <div style={{ ...F.display, fontSize: 24, color: T.gold, animation: 'shimmer 2s ease-in-out infinite', lineHeight: 1 }}>{revealData.variantName}</div>
             <div style={{ ...F.mono, fontSize: 8, color: T.muted, marginTop: 2 }}>Variant of {revealData.myMoveName || 'technique'}</div>
           </div>
         )}
-        {/* Headline — filled by revealText */}
-        <div ref={headlineRef} style={{ ...F.display, fontSize: 28, lineHeight: 1, marginBottom: 4, minHeight: 34 }} />
+        <div style={{
+          ...F.display, fontSize: 36, lineHeight: 1, marginBottom: 4,
+          color: outcomeColor,
+          wordBreak: 'keep-all',
+        }}>
+          {revealData.description}
+        </div>
         {revealData.newPosName && (
-          <div style={{ ...F.mono, fontSize: 10, color: T.muted, marginTop: 6, animation: 'fadeSlideUp 0.3s var(--ease-out-expo) 1.7s both' }}>&rarr; {revealData.newPosName}</div>
+          <div style={{ ...F.mono, fontSize: 10, color: T.muted, marginTop: 6 }}>&rarr; {revealData.newPosName}</div>
         )}
-        <div style={{ ...F.mono, fontSize: 8, color: T.dim, marginTop: 10, animation: 'fadeIn 0.3s ease 2.3s both' }}>Tap anywhere to continue</div>
+        <div style={{ ...F.mono, fontSize: 8, color: T.dim, marginTop: 10 }}>Tap anywhere to continue</div>
       </div>
     </div>
   );
 }
 
-// ── TAP OVERLAY ──────────────────────────────────────────
-export function TapOverlay({ tapOverlay, matchContainerRef, particleContainerRef }) {
+// ── TAP OVERLAY — The Surrender ──────────────────────────
+export function TapOverlay({ tapOverlay, matchContainerRef }) {
   if (!tapOverlay) return null;
 
-  const headlineRef = useRef(null);
-  const subNameRef = useRef(null);
+  const [phase, setPhase] = useState(0); // 0=black, 1=field
+  const colors = tapOverlay.won ? FINISH_COLORS.tap_win : FINISH_COLORS.tap_loss;
+  const headline = tapOverlay.won ? 'SUBMITTED' : 'TAPPED';
 
   useEffect(() => {
     if (!tapOverlay) return;
-
-    // Screen shake + quad particle bursts
-    if (matchContainerRef?.current) screenShake(matchContainerRef.current, true);
-
-    if (particleContainerRef?.current) {
-      const rect = particleContainerRef.current.getBoundingClientRect();
-      const cx = rect.width / 2, cy = rect.height / 2;
-      burstParticles(particleContainerRef.current, cx, cy, T.sub, 20);
-      setTimeout(() => burstParticles(particleContainerRef.current, cx, cy, T.sub, 20), 120);
-      setTimeout(() => burstParticles(particleContainerRef.current, cx, cy, T.sub, 20), 240);
-      setTimeout(() => burstParticles(particleContainerRef.current, cx, cy, T.sub, 15), 360);
-    }
-
-    // Second shake at T+650
-    setTimeout(() => {
-      if (matchContainerRef?.current) screenShake(matchContainerRef.current, true);
-    }, 650);
-
-    // Text reveal
-    setTimeout(() => {
-      if (headlineRef.current) {
-        revealText(headlineRef.current, 'TAPPED', T.sub, 50);
-      }
-    }, 400);
-
-    setTimeout(() => {
-      if (subNameRef.current) subNameRef.current.style.opacity = '1';
-    }, 850);
+    // Big shake
+    if (matchContainerRef?.current) screenShake(matchContainerRef.current, 'big');
+    // 100ms black blink, then color field
+    setTimeout(() => setPhase(1), 100);
   }, [tapOverlay]);
 
+  // Phase 0: pure black
+  if (phase === 0) {
+    return <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: '#000000' }} />;
+  }
+
+  // Phase 1: color field
   return (
-    <div style={{
-      position: 'absolute', inset: 0, zIndex: 100,
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      background: `radial-gradient(ellipse at 50% 40%, rgba(194,48,40,0.15) 0%, ${T.bg} 65%)`,
-    }}>
-      {/* Submission tag */}
-      <div style={{ ...F.mono, fontSize: 10, letterSpacing: '0.2em', color: T.sub, marginBottom: 16, animation: 'fadeSlideDown 0.3s var(--ease-out-expo) 0.25s both' }}>
-        SUBMISSION
-      </div>
-
-      {/* TAPPED — character reveal */}
-      <div ref={headlineRef} style={{ ...F.display, fontSize: 72, lineHeight: 1, letterSpacing: '0.05em', minHeight: 80 }} />
-
-      {/* Technique name */}
-      <div ref={subNameRef} style={{ ...F.display, fontSize: 18, color: T.sub, marginTop: 16, fontStyle: 'italic', opacity: 0, transition: 'opacity 0.4s' }}>
+    <div className="finish-overlay" style={{ background: colors.bg }}>
+      <div className="headline" style={{ color: colors.text }}>{headline}</div>
+      <div className="divider" style={{ background: colors.text }} />
+      <div style={{
+        fontFamily: T.display, fontSize: 18, fontStyle: 'italic',
+        color: colors.text, opacity: 0,
+        animation: 'fadeIn 0.6s ease 0.6s forwards',
+      }}>
         {tapOverlay.subName}
       </div>
-
-      {/* Winner */}
-      <div style={{ ...F.mono, fontSize: 11, color: T.muted, marginTop: 12, animation: 'fadeIn 0.3s ease 1.15s both' }}>
-        {tapOverlay.won ? 'Submission Victory!' : 'You got tapped'}
+      <div style={{
+        fontFamily: T.mono, fontSize: 10, letterSpacing: '0.15em',
+        color: colors.text, opacity: 0,
+        animation: 'fadeIn 0.4s ease 1.1s forwards',
+      }}>
+        {tapOverlay.won ? 'Submission Victory' : 'You got tapped'} · {tapOverlay.winnerName} wins
       </div>
-      <div style={{ ...F.mono, fontSize: 10, color: T.dim, marginTop: 6, animation: 'fadeIn 0.3s ease 1.5s both' }}>
-        {tapOverlay.winnerName} wins
-      </div>
+      <button onClick={() => {}} style={{
+        marginTop: 32, padding: '14px 40px', background: 'transparent',
+        border: `1px solid ${colors.divider}`, borderRadius: 10,
+        fontFamily: T.mono, fontSize: 10, letterSpacing: '0.15em',
+        textTransform: 'uppercase', cursor: 'pointer',
+        color: colors.text, opacity: 0,
+        animation: 'fadeIn 0.3s ease 1.9s forwards',
+      }}>
+        Continue
+      </button>
     </div>
   );
 }
 
-// ── FINISH OVERLAY ───────────────────────────────────────
+// ── FINISH OVERLAY — Points Victory/Defeat ───────────────
 export function FinishOverlay({ finishOverlay, matchContainerRef }) {
   if (!finishOverlay) return null;
 
-  const headlineRef = useRef(null);
+  const colors = finishOverlay.won ? FINISH_COLORS.victory : FINISH_COLORS.defeat;
+  const headline = finishOverlay.won ? 'VICTORY' : 'DEFEAT';
 
   useEffect(() => {
-    if (!finishOverlay) return;
     if (matchContainerRef?.current) screenShake(matchContainerRef.current);
-
-    const word = finishOverlay.won ? 'VICTORY' : 'DEFEAT';
-    const color = finishOverlay.won ? T.td : T.sub;
-    setTimeout(() => {
-      if (headlineRef.current) revealText(headlineRef.current, word, color, 45);
-    }, 300);
   }, [finishOverlay]);
 
-  const resultColor = finishOverlay.won ? T.td : T.sub;
-  const bgColor = finishOverlay.won ? 'rgba(15,123,95,0.08)' : 'rgba(194,48,40,0.08)';
-
   return (
-    <div style={{
-      position: 'absolute', inset: 0, zIndex: 100,
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      background: `radial-gradient(ellipse at 50% 40%, ${bgColor} 0%, ${T.bg} 65%)`,
-    }}>
-      <div style={{ ...F.mono, fontSize: 10, letterSpacing: '0.2em', color: resultColor, marginBottom: 16, animation: 'fadeSlideDown 0.3s var(--ease-out-expo) 0.15s both' }}>
-        {finishOverlay.method?.toUpperCase() || 'POINTS'}
-      </div>
-
-      <div ref={headlineRef} style={{ ...F.display, fontSize: 56, lineHeight: 1, letterSpacing: '0.05em', minHeight: 64 }} />
-
-      <div style={{ ...F.display, fontSize: 28, color: T.text, marginTop: 12, animation: 'fadeSlideUp 0.3s var(--ease-out-expo) 0.8s both' }}>
+    <div className="finish-overlay" style={{ background: colors.bg }}>
+      <div className="headline" style={{ color: colors.text }}>{headline}</div>
+      <div className="divider" style={{ background: colors.text }} />
+      <div style={{
+        fontFamily: T.display, fontSize: 28, color: colors.text,
+        opacity: 0, animation: 'fadeIn 0.4s ease 0.4s forwards',
+      }}>
         {finishOverlay.myPoints} – {finishOverlay.oppPoints}
       </div>
-      <div style={{ ...F.mono, fontSize: 11, color: T.muted, marginTop: 12, animation: 'fadeIn 0.3s ease 1.2s both' }}>
+      <div style={{
+        fontFamily: T.mono, fontSize: 10, letterSpacing: '0.15em',
+        color: colors.text, opacity: 0,
+        animation: 'fadeIn 0.4s ease 0.8s forwards',
+      }}>
         Won by {finishOverlay.method}
       </div>
+      <button onClick={() => {}} style={{
+        marginTop: 32, padding: '14px 40px', background: 'transparent',
+        border: `1px solid ${colors.divider}`, borderRadius: 10,
+        fontFamily: T.mono, fontSize: 10, letterSpacing: '0.15em',
+        textTransform: 'uppercase', cursor: 'pointer',
+        color: colors.text, opacity: 0,
+        animation: 'fadeIn 0.3s ease 1.5s forwards',
+      }}>
+        Continue
+      </button>
     </div>
   );
 }
 
-// ── ESCAPED OVERLAY ──────────────────────────────────────
-export function EscapedOverlay({ visible, matchContainerRef, particleContainerRef }) {
+// ── ESCAPED OVERLAY — The First Breath ───────────────────
+export function EscapedOverlay({ visible, subTechName, matchContainerRef }) {
   if (!visible) return null;
 
-  const headlineRef = useRef(null);
+  const [phase, setPhase] = useState(0); // 0=flash, 1=field
+  const colors = FINISH_COLORS.escaped;
 
   useEffect(() => {
     if (!visible) return;
-
-    // Green particle bursts
-    if (particleContainerRef?.current) {
-      const rect = particleContainerRef.current.getBoundingClientRect();
-      const cx = rect.width / 2, cy = rect.height / 2;
-      burstParticles(particleContainerRef.current, cx, cy, T.td, 18);
-      setTimeout(() => burstParticles(particleContainerRef.current, cx, cy, T.td, 12), 150);
-      setTimeout(() => burstParticles(particleContainerRef.current, cx, cy, T.td, 10), 300);
-    }
-
-    setTimeout(() => {
-      if (headlineRef.current) revealText(headlineRef.current, 'ESCAPED', T.td, 50);
-    }, 400);
+    // White flash then settle to teal
+    setTimeout(() => setPhase(1), 150);
   }, [visible]);
 
+  // Phase 0: white flash — the gasp
+  if (phase === 0) {
+    return <div style={{ position: 'fixed', inset: 0, zIndex: 99, background: '#FFFFFF', opacity: 0.3 }} />;
+  }
+
   return (
-    <div style={{
-      position: 'absolute', inset: 0, zIndex: 99,
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      background: `radial-gradient(ellipse at 50% 40%, rgba(15,123,95,0.10) 0%, ${T.bg} 60%)`,
-      pointerEvents: 'none',
-    }}>
-      <div style={{ ...F.mono, fontSize: 10, letterSpacing: '0.2em', color: T.td, marginBottom: 16, animation: 'fadeSlideDown 0.3s var(--ease-out-expo) 0.25s both' }}>
-        SUBMISSION DEFENSE
+    <div className="finish-overlay" style={{ background: colors.bg, pointerEvents: 'none' }}>
+      <div className="headline" style={{ color: colors.text }}>ESCAPED</div>
+      <div className="divider" style={{ background: colors.text }} />
+      <div style={{
+        fontFamily: T.display, fontSize: 18, fontStyle: 'italic',
+        color: colors.text, opacity: 0,
+        animation: 'fadeIn 0.6s ease 0.55s forwards',
+      }}>
+        {subTechName || 'Submission'} Defended
       </div>
-      <div ref={headlineRef} style={{ ...F.display, fontSize: 56, lineHeight: 1, minHeight: 64 }} />
     </div>
   );
 }
 
-// ── CAUGHT OVERLAY ───────────────────────────────────────
+// ── CAUGHT OVERLAY — The Trap Closes ─────────────────────
 export function CaughtOverlay({ visible, positionName, onComplete }) {
   if (!visible) return null;
 
-  const headlineRef = useRef(null);
+  const [dimOpacity, setDimOpacity] = useState(0);
+  const [showText, setShowText] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  const colors = FINISH_COLORS.caught;
 
   useEffect(() => {
     if (!visible) return;
-
-    setTimeout(() => {
-      if (headlineRef.current) revealText(headlineRef.current, 'CAUGHT', '#8B1A14', 50);
-    }, 600);
-
+    // Slow dim — 800ms, like a choke sinking in
+    requestAnimationFrame(() => setDimOpacity(0.85));
+    // "CAUGHT" fades in halfway through the dim
+    setTimeout(() => setShowText(true), 400);
+    // Screen shake when fully dark
+    setTimeout(() => setShowDetails(true), 1200);
     // Auto-transition to sub minigame
-    const t = setTimeout(() => { if (onComplete) onComplete(); }, 3200);
+    const t = setTimeout(() => { if (onComplete) onComplete(); }, 3500);
     return () => clearTimeout(t);
   }, [visible]);
 
   return (
     <div style={{
-      position: 'absolute', inset: 0, zIndex: 98,
+      position: 'fixed', inset: 0, zIndex: 98,
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      background: `radial-gradient(ellipse at 50% 40%, rgba(194,48,40,0.18) 0%, ${T.bg} 60%)`,
-      animation: 'fadeIn 0.3s ease',
+      background: colors.bg,
+      opacity: dimOpacity,
+      transition: 'opacity 0.8s ease',
     }}>
-      {/* Edge glow */}
-      <div style={{ position: 'absolute', inset: 0, boxShadow: 'inset 0 0 100px rgba(194,48,40,0.14)', pointerEvents: 'none' }} />
+      {/* Red seep from edges */}
+      <div style={{
+        position: 'absolute', inset: 0, pointerEvents: 'none',
+        boxShadow: showDetails ? 'inset 0 0 120px rgba(194,48,40,0.08)' : 'none',
+        transition: 'box-shadow 2s ease',
+      }} />
 
-      {/* Vignette */}
-      <div className="vignette-overlay active" />
-
-      {/* Danger icon */}
-      <div style={{ animation: 'fadeSlideDown 0.3s var(--ease-out-back) 1.1s both' }}>
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" style={{ marginBottom: 12 }}>
-          <path d="M12 2L2 22h20L12 2z" stroke="#8B1A14" strokeWidth="1.5" fill="rgba(194,48,40,0.08)" />
-          <line x1="12" y1="9" x2="12" y2="15" stroke="#8B1A14" strokeWidth="2" strokeLinecap="round" />
-          <circle cx="12" cy="18" r="1" fill="#8B1A14" />
-        </svg>
+      {/* CAUGHT */}
+      <div style={{
+        fontFamily: T.display,
+        fontSize: 'clamp(48px, 14vw, 56px)',
+        color: colors.text,
+        opacity: showText ? 1 : 0,
+        transition: 'opacity 0.8s ease',
+        letterSpacing: '-0.02em',
+        wordBreak: 'keep-all',
+      }}>
+        CAUGHT
       </div>
 
-      <div ref={headlineRef} style={{ ...F.display, fontSize: 56, lineHeight: 1, minHeight: 64 }} />
+      {/* Details */}
+      {showDetails && (
+        <>
+          {/* Danger icon */}
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" style={{ marginTop: 16, opacity: 0, animation: 'fadeIn 0.4s ease forwards' }}>
+            <path d="M12 2L2 22h20L12 2z" stroke={colors.text} strokeWidth="1.5" fill={colors.text + '10'} />
+            <line x1="12" y1="9" x2="12" y2="15" stroke={colors.text} strokeWidth="2" strokeLinecap="round" />
+            <circle cx="12" cy="18" r="1" fill={colors.text} />
+          </svg>
 
-      <div style={{ ...F.mono, fontSize: 10, color: T.sub, marginTop: 12, animation: 'fadeIn 0.3s ease 1.3s both' }}>
-        No escapes from this position
-      </div>
-      {positionName && (
-        <div style={{ ...F.display, fontSize: 18, color: T.muted, marginTop: 6, animation: 'fadeIn 0.3s ease 1.3s both' }}>
-          {positionName}
-        </div>
+          <div style={{ fontFamily: T.mono, fontSize: 10, color: colors.text, opacity: 0.5, marginTop: 12, animation: 'fadeIn 0.4s ease 0.2s forwards' }}>
+            No escapes from this position
+          </div>
+          {positionName && (
+            <div style={{ fontFamily: T.display, fontSize: 14, color: colors.text, opacity: 0.3, marginTop: 6, animation: 'fadeIn 0.4s ease 0.4s forwards' }}>
+              {positionName}
+            </div>
+          )}
+          <div style={{ fontFamily: T.mono, fontSize: 9, color: colors.text, opacity: 0.25, marginTop: 12, animation: 'fadeIn 0.4s ease 0.8s forwards' }}>
+            -30% escape · 0% reversal
+          </div>
+          <div style={{ fontFamily: T.body, fontSize: 13, color: colors.text, fontStyle: 'italic', opacity: 0, marginTop: 16, animation: 'fadeIn 0.4s ease 1.3s forwards' }}>
+            The submission begins...
+          </div>
+        </>
       )}
-      <div style={{ ...F.mono, fontSize: 9, color: T.sub + '99', marginTop: 12, animation: 'fadeIn 0.3s ease 1.8s both' }}>
-        -30% escape chance · 0% reversal
-      </div>
-      <div style={{ ...F.body, fontSize: 13, color: T.muted, fontStyle: 'italic', marginTop: 16, animation: 'fadeIn 0.3s ease 2.5s both' }}>
-        The submission begins...
-      </div>
     </div>
   );
 }

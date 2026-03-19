@@ -11,7 +11,7 @@ import { MoveIcon } from '../../lib/icons';
 import { Btn, Spinner } from '../../components/UI';
 import { G } from '../../lib/supabase';
 import { getTightenAtmosphere, getTightenEdgeGlow } from '../../lib/atmospheres';
-import { burstParticles, screenShake } from '../../lib/animations';
+import { screenShake } from '../../lib/animations';
 
 const F = {
   display: { fontFamily: T.display },
@@ -36,7 +36,7 @@ export default function SubMinigame({
   lockSubChoice,
   getChainSubOptions, getCounterOptions,
   subReveal, chainSub,
-  matchContainerRef, particleContainerRef,
+  matchContainerRef,
 }) {
   const subTech = G.techniques[match.sub_technique_id];
   const myLk = isAtt ? match.sub_attacker_locked : match.sub_defender_locked;
@@ -48,10 +48,6 @@ export default function SubMinigame({
   useEffect(() => {
     if (subReveal && matchContainerRef?.current) {
       screenShake(matchContainerRef.current);
-      if (particleContainerRef?.current) {
-        const rect = particleContainerRef.current.getBoundingClientRect();
-        burstParticles(particleContainerRef.current, rect.width / 2, rect.height * 0.3, T.sub, 8);
-      }
     }
   }, [subReveal]);
 

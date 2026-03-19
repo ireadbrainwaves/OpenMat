@@ -312,11 +312,7 @@ function LadderBotList({ ladder, bots, beaten, checking, loading, onChallenge, o
               border: isBoss ? `1.5px solid ${T.gold}30` : isFrontier ? `1.5px solid #11182730` : `1px solid ${T.border}`,
               boxShadow: isFrontier ? T.shadowMd : isBoss ? T.shadowMd : T.shadowSm,
               opacity: unlocked ? 1 : 0.5,
-              animation: isFrontier
-                ? `fadeSlideUp 0.25s var(--ease-out-expo) ${idx * 0.05}s both, breathingShadow 2.5s ease-in-out infinite ${idx * 0.05 + 0.3}s`
-                : isBoss
-                ? `fadeSlideUp 0.25s var(--ease-out-expo) ${idx * 0.05}s both, bossPulse 3s ease-in-out infinite ${idx * 0.05 + 0.3}s`
-                : `fadeSlideUp 0.25s var(--ease-out-expo) ${idx * 0.05}s both`,
+              animation: isBoss ? 'bossPulse 3s ease-in-out infinite' : 'none',
               transition: 'all 0.15s',
             }}>
               {/* Position number */}

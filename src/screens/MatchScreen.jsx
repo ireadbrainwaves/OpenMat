@@ -93,9 +93,8 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
   const revealTimerRef = useRef(null);
   const endedRef = useRef(false);
 
-  // Animation refs
+  // Animation ref
   const matchContainerRef = useRef(null);
-  const particleContainerRef = useRef(null);
 
   // Keep matchRef in sync
   useEffect(() => { matchRef.current = match; }, [match]);
@@ -572,8 +571,6 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
       {/* Atmosphere layer */}
       <div className={`atmosphere ${getAtmosphereClass(myPos, myStatus === 'top')}`} />
 
-      {/* Particle container */}
-      <div ref={particleContainerRef} style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 80 }} />
 
       {/* ═══ SCORE HEADER ═══ */}
       <ScoreHeader match={match} profile={profile} opp={opp} myPts={myPts} oppPts={oppPts} />
@@ -828,7 +825,7 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
             lockSubChoice={lockSubChoice}
             getChainSubOptions={getChainSubOptions} getCounterOptions={getCounterOptions}
             subReveal={subReveal} chainSub={chainSub}
-            matchContainerRef={matchContainerRef} particleContainerRef={particleContainerRef}
+            matchContainerRef={matchContainerRef}
           />
         )}
 
@@ -849,11 +846,11 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
 
       {/* ═══ OVERLAYS ═══ */}
       {showReveal && revealData && (
-        <RevealOverlay revealData={revealData} yourFlipped={yourFlipped} oppFlipped={oppFlipped} showResult={showResult} onDismiss={dismissReveal} matchContainerRef={matchContainerRef} particleContainerRef={particleContainerRef} />
+        <RevealOverlay revealData={revealData} yourFlipped={yourFlipped} oppFlipped={oppFlipped} showResult={showResult} onDismiss={dismissReveal} matchContainerRef={matchContainerRef} />
       )}
-      <TapOverlay tapOverlay={tapOverlay} matchContainerRef={matchContainerRef} particleContainerRef={particleContainerRef} />
+      <TapOverlay tapOverlay={tapOverlay} matchContainerRef={matchContainerRef} />
       <FinishOverlay finishOverlay={finishOverlay} matchContainerRef={matchContainerRef} />
-      <EscapedOverlay visible={subEscaped} matchContainerRef={matchContainerRef} particleContainerRef={particleContainerRef} />
+      <EscapedOverlay visible={subEscaped} subTechName={match?.sub_technique_id ? G.techniques[match.sub_technique_id]?.name : null} matchContainerRef={matchContainerRef} />
 
       {/* ═══ KEYFRAMES ═══ */}
       <style>{`

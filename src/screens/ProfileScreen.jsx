@@ -27,7 +27,7 @@ export default function ProfileScreen({ user, profile }) {
   const animal = ARCHETYPE_ANIMALS[profile.archetype] || '';
 
   return (
-    <div style={{ padding: "20px", animation: "fadeSlideUp 0.3s var(--ease-out-expo)" }}>
+    <div style={{ padding: "20px",  }}>
       {/* Avatar */}
       <div style={{ textAlign: "center", marginBottom: 20 }}>
         <div style={{
