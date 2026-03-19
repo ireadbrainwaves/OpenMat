@@ -122,6 +122,16 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
   const isDesperation = myDesperation === true || myGp < 0;
   const isLastMove = myGp === 0 && !isDesperation;
 
+  // Spatial breathing — position dominance drives UI compression
+  const breathingClass = myStatus === 'top' ? 'breathing-dominant'
+    : myStatus === 'bottom' ? 'breathing-danger'
+    : 'breathing-neutral';
+
+  // Sub minigame adds tighten compression
+  const tightenClass = match?.sub_minigame_active
+    ? `breathing-tighten-${Math.min(match?.sub_tighten_turns || 0, 4)}`
+    : '';
+
   // Position-based GP recovery indicator (from positions table, graceful fallback)
   const posRecovery = (() => {
     if (!myPos || !pos) return 0;
@@ -358,11 +368,12 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
     setRevealData({ description: cleanDesc, result: turn.result, turn: turn.turn_number, myMoveName, myMoveType, variantName: variantName || fallback.variantName, oppMoveName, oppMoveType, newPosName });
     setYourFlipped(false); setOppFlipped(false); setShowResult(false);
     setShowReveal(true);
-    setTimeout(() => setYourFlipped(true), 400);
-    setTimeout(() => setOppFlipped(true), 750);
-    setTimeout(() => setShowResult(true), 1200);
+    // Ma timing: flip → 300ms stillness → flip → 400ms stillness → outcome
+    setTimeout(() => setYourFlipped(true), 200);     // T+200ms: your card flips
+    setTimeout(() => setOppFlipped(true), 1100);     // T+1100ms: 300ms stillness, then opp flips
+    setTimeout(() => setShowResult(true), 2100);     // T+2100ms: 400ms stillness, then outcome
     if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
-    revealTimerRef.current = setTimeout(dismissReveal, 4500);
+    revealTimerRef.current = setTimeout(dismissReveal, 5500);
     lastLockedMoveRef.current = null;
   }
 
@@ -566,7 +577,7 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
   };
 
   return (
-    <div ref={matchContainerRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative', background: T.bg }}>
+    <div ref={matchContainerRef} className={`${breathingClass} ${tightenClass}`} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative', background: T.bg }}>
 
       {/* Atmosphere layer */}
       <div className={`atmosphere ${getAtmosphereClass(myPos, myStatus === 'top')}`} />
@@ -703,14 +714,14 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
 
             {/* States 1 & 2: Normal hand (+ survive at bottom when GP < 3) */}
             {!zeroMoves && (
-              <div style={{ flex: 1, overflowY: 'auto', padding: '6px 18px 0', minHeight: 0 }}>
+              <div className="match-breathing" style={{ flex: 1, overflowY: 'auto', padding: 'calc(6px * var(--breath-pad, 1)) calc(18px * var(--breath-pad, 1)) 0', minHeight: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
                   <span style={{ ...F.mono, fontSize: 9, color: T.muted, textTransform: 'uppercase' }}>Your Hand</span>
                   <span style={{ ...F.mono, fontSize: 9, color: T.dim }}>{moves.length} moves</span>
                 </div>
 
                 {console.log('[HAND DEBUG]', { stance: myStanceVal, movesCount: moves.length, moves: moves.map(m => m.name + '(' + m.type + ')') })}
-                <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 8, scrollSnapType: 'x mandatory' }}>
+                <div className="match-breathing" style={{ display: 'flex', gap: 'calc(10px * var(--breath-gap, 1))', overflowX: 'auto', paddingBottom: 8, scrollSnapType: 'x mandatory' }}>
                 {moves.map(m => {
                   const tier = deckTiers[m.id] || 'trained';
                   const isDrilled = myDrilled.includes(m.id);

@@ -384,6 +384,12 @@ function pickSurviveOrSpaz(diff, botGP, personality = {}) {
 // PUBLIC API
 // ═══════════════════════════════════════════════════════════
 export const BotEngine = {
+  // Variable wait — harder bots make you wait longer (anticipation IS difficulty)
+  getThinkDelay(difficulty) {
+    const diff = parseDifficulty(difficulty);
+    const base = 1200 + (diff * 2000);
+    return base + (Math.random() * 400 - 200);
+  },
   get THINK_DELAY_MS() { return 800 + Math.random() * 1200; },
 
   updateMemory(matchId, playerMoveId, playerStance, playerPosition, botMoveId, turnNumber) {
@@ -412,7 +418,7 @@ export const BotEngine = {
   },
 
   async respondToStance(match, botId, botArchetype, difficulty, personality = {}) {
-    await new Promise(r => setTimeout(r, this.THINK_DELAY_MS));
+    await new Promise(r => setTimeout(r, this.getThinkDelay(difficulty)));
     const diff = parseDifficulty(difficulty);
     const isP1 = match.player1_id === botId;
     const botGP = isP1 ? (match.player1_gp ?? 10) : (match.player2_gp ?? 10);
@@ -445,7 +451,7 @@ export const BotEngine = {
   },
 
   async respondToMove(match, botId, botArchetype, botHand, drilledMoves, opponentStance, difficulty, personality = {}) {
-    await new Promise(r => setTimeout(r, this.THINK_DELAY_MS));
+    await new Promise(r => setTimeout(r, this.getThinkDelay(difficulty)));
     const diff = parseDifficulty(difficulty);
     const isP1 = match.player1_id === botId;
     const botGP = isP1 ? (match.player1_gp ?? 10) : (match.player2_gp ?? 10);

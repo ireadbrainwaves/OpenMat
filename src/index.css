@@ -366,3 +366,56 @@ button { -webkit-tap-highlight-color: transparent; }
   hyphens: none;
   font-size: clamp(13px, 4vw, 19px);
 }
+
+/* ═══════════════════════════════════
+   SPATIAL BREATHING
+   Space compresses and releases with position.
+   The interface IS grappling.
+   ═══════════════════════════════════ */
+
+/* Breathing base variables */
+:root {
+  --breath-pad: 1.0;
+  --breath-gap: 1.0;
+  --breath-card: 1.0;
+  --breath-bar: 1.0;
+}
+
+/* Dominant: mount top, back control, side control top — room to think */
+.breathing-dominant {
+  --breath-pad: 1.10;
+  --breath-gap: 1.10;
+  --breath-card: 1.05;
+  --breath-bar: 1.0;
+}
+
+/* Neutral: standing, scramble, closed guard — balanced */
+.breathing-neutral {
+  --breath-pad: 1.0;
+  --breath-gap: 1.0;
+  --breath-card: 1.0;
+  --breath-bar: 1.0;
+}
+
+/* Danger: mount bottom, back mounted, SC bottom — compressed, trapped */
+.breathing-danger {
+  --breath-pad: 0.88;
+  --breath-gap: 0.85;
+  --breath-card: 0.94;
+  --breath-bar: 1.15;
+}
+
+/* Sub minigame tighten compression — stacks on top of danger */
+.breathing-tighten-1 { --breath-pad: 0.86; --breath-gap: 0.83; }
+.breathing-tighten-2 { --breath-pad: 0.84; --breath-gap: 0.80; }
+.breathing-tighten-3 { --breath-pad: 0.82; --breath-gap: 0.77; }
+.breathing-tighten-4 { --breath-pad: 0.80; --breath-gap: 0.74; }
+
+/* Match content uses breathing multipliers */
+.match-breathing {
+  transition: padding 1.5s ease, gap 1.5s ease;
+}
+
+.match-hand-card {
+  transition: width 1.5s ease, min-height 1.5s ease;
+}

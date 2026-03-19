@@ -29,6 +29,10 @@ export default function ResourceBar({
   const gpMax = GP_MAX_BY_BELT[playerBelt] || gpMaxProp || 10;
   const actualPct = Math.max(0, (myGp / gpMax) * 100);
 
+  // GP bar thickness scales with amount — breath as fuel
+  const barHeight = myGp <= 1 ? 6 : myGp <= 4 ? 5 : myGp <= 7 ? 4 : 3;
+  const gpFontSize = myGp <= 2 ? 20 : 18;
+
   const oppStaminaLabel = oppGp >= 8 ? 'Fresh' : oppGp >= 4 ? 'Tired' : 'Gassed';
   const oppStaminaColor = oppGp >= 8 ? T.green : oppGp >= 4 ? T.amber : T.red;
   const isSetup = myStanceVal === 'setup';
@@ -37,9 +41,9 @@ export default function ResourceBar({
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', padding: '6px 18px', gap: 8, borderBottom: `1px solid ${T.border}`, flexShrink: 0, background: isDesperation ? '#ff222208' : T.surface }}>
-      <span style={{ ...F.display, fontSize: 18, color: gpColor, lineHeight: 1 }}>{myGp}</span>
+      <span style={{ ...F.display, fontSize: gpFontSize, color: gpColor, lineHeight: 1, transition: 'font-size 0.6s ease' }}>{myGp}</span>
       <span style={{ ...F.mono, fontSize: 8, color: T.dim }}>/{gpMax} GP</span>
-      <div style={{ flex: 1, height: 3, background: T.border, borderRadius: 2, overflow: 'hidden' }}>
+      <div style={{ flex: 1, height: barHeight, background: T.border, borderRadius: 2, overflow: 'hidden', transition: 'height 0.6s ease' }}>
         <div style={{ height: '100%', width: actualPct + '%', background: gpColor, borderRadius: 2, transition: 'width 0.6s ease' }} />
       </div>
       <span style={{ ...F.mono, fontSize: 9, fontWeight: 600, color: recoveryColor }}>
