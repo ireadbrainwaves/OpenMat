@@ -43,6 +43,13 @@ export default function DeckScreen({ profile, onProfileUpdate }) {
   const [pendingArch, setPendingArch] = useState(null);
   const [expandedMove, setExpandedMove] = useState(null);
   const [search, setSearch] = useState('');
+  const [showSwapDeck, setShowSwapDeck] = useState(false);
+  const [swapDecks, setSwapDecks] = useState([]);
+  const [swapLoading, setSwapLoading] = useState(false);
+  const [swapSelected, setSwapSelected] = useState(null);
+  const [swapConfirm, setSwapConfirm] = useState(null);
+  const [swapError, setSwapError] = useState(null);
+  const [swapBusy, setSwapBusy] = useState(false);
 
   useEffect(() => {
     if (!profile) return;
@@ -173,6 +180,48 @@ export default function DeckScreen({ profile, onProfileUpdate }) {
     setPendingArch(null);
   }
 
+  // ── SWAP STARTER DECK (white belt only) ────────────────
+  async function openSwapDeck() {
+    setShowSwapDeck(true);
+    setSwapError(null);
+    setSwapSelected(null);
+    setSwapConfirm(null);
+    if (swapDecks.length > 0) return; // already fetched
+    setSwapLoading(true);
+    const { data } = await sb.from('starter_decks').select('id, archetype, deck_name, technique_ids').order('id');
+    if (data) setSwapDecks(data);
+    setSwapLoading(false);
+  }
+
+  async function confirmSwapDeck() {
+    if (!swapConfirm || swapBusy) return;
+    setSwapBusy(true);
+    setSwapError(null);
+    const { data, error: rpcError } = await sb.rpc('swap_starter_deck', {
+      p_profile_id: profile.id,
+      p_deck_id: parseInt(swapConfirm),
+    });
+    if (rpcError) {
+      setSwapError(rpcError.message || 'Something went wrong');
+      setSwapBusy(false);
+      return;
+    }
+    if (!data?.success) {
+      setSwapError(data?.error || 'Swap failed');
+      setSwapBusy(false);
+      return;
+    }
+    // Refresh profile + moves
+    const { data: fresh } = await sb.from('profiles').select('*').eq('id', profile.id).single();
+    if (fresh && onProfileUpdate) onProfileUpdate(fresh);
+    const { data: newMoves } = await sb.from('player_move_stacks').select('*, techniques(*)').eq('profile_id', profile.id);
+    if (newMoves) setMoves(newMoves);
+    setSwapBusy(false);
+    setShowSwapDeck(false);
+    setSwapConfirm(null);
+    setSwapSelected(null);
+  }
+
   return (
     <div style={{ padding: '20px 16px' }}>
       {/* Archetype bar */}
@@ -194,6 +243,18 @@ export default function DeckScreen({ profile, onProfileUpdate }) {
           background: '#F9FAFB', border: `1px solid ${T.border}`, color: T.muted,
         }}>Switch</button>
       </div>
+
+      {/* Swap starter deck — white belt only */}
+      {profile?.belt === 'white' && (
+        <button onClick={openSwapDeck} style={{
+          width: '100%', padding: '10px', marginBottom: 14,
+          background: 'transparent', border: `1px solid ${T.border}`,
+          borderRadius: 8, fontFamily: F.mono, fontSize: 9,
+          letterSpacing: '0.08em', color: T.muted, cursor: 'pointer',
+        }}>
+          Try a Different Style
+        </button>
+      )}
 
       {/* Tab toggle */}
       <div style={{ display: 'flex', marginBottom: 14, border: `1.5px solid ${T.border}`, borderRadius: 8, overflow: 'hidden' }}>
@@ -456,6 +517,119 @@ export default function DeckScreen({ profile, onProfileUpdate }) {
               color: pendingArch ? '#fff' : T.dim, opacity: switchingArch ? 0.5 : 1,
             }}>{switchingArch ? '...' : 'Confirm Switch'}</button>
           </div>
+        </div>
+      )}
+
+      {/* ═══ SWAP STARTER DECK OVERLAY (white belt only) ═══ */}
+      {showSwapDeck && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(248,248,251,0.97)', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '18px 20px 10px', borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
+            <div style={{ fontFamily: F.display, fontSize: 24, color: T.text }}>Try a Different Style</div>
+            <div style={{ fontFamily: F.mono, fontSize: 9, color: T.dim, marginTop: 4 }}>
+              This replaces ALL your moves with a new starter deck. History and Elo stay the same.
+            </div>
+          </div>
+
+          {swapError && (
+            <div style={{ margin: '10px 20px 0', padding: '10px 14px', background: `${T.red}08`, border: `1px solid ${T.red}20`, borderRadius: 8, fontFamily: F.mono, fontSize: 10, color: T.red }}>
+              {swapError}
+            </div>
+          )}
+
+          <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px' }}>
+            {swapLoading ? (
+              <div style={{ textAlign: 'center', padding: 40, fontFamily: F.body, fontSize: 14, color: T.muted }}>Loading decks...</div>
+            ) : (() => {
+              // Group decks by archetype
+              const ARCH_ORDER = [
+                { id: 'wrestler', label: 'Wrestler', dbKey: 'wrestler' },
+                { id: 'guard_puller', label: 'Guard Puller', dbKey: 'guard_puller' },
+                { id: 'pressure_passer', label: 'Pressure Passer', dbKey: 'pressure_passer' },
+                { id: 'leg_locker', label: 'Leg Locker', dbKey: 'leg_locker' },
+                { id: 'submission_hunter', label: 'Sub Hunter', dbKey: 'sub_hunter' },
+                { id: 'scrambler', label: 'Scrambler', dbKey: 'scrambler' },
+              ];
+              return ARCH_ORDER.map(arch => {
+                const archDecks = swapDecks.filter(d => d.archetype === arch.dbKey);
+                if (archDecks.length === 0) return null;
+                const isCurrent = profile?.archetype === arch.id;
+                const archColor = ArchColors[arch.id] || T.muted;
+                const animal = ARCHETYPE_ANIMALS[arch.id] || '';
+                return (
+                  <div key={arch.id} style={{ marginBottom: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <ArchIcon id={arch.id} s={18} />
+                      <span style={{ fontFamily: F.display, fontSize: 15, color: isCurrent ? archColor : T.text }}>{arch.label}</span>
+                      <span style={{ fontFamily: F.mono, fontSize: 8, color: T.dim }}>{animal}</span>
+                      {isCurrent && <span style={{ fontFamily: F.mono, fontSize: 7, color: archColor, background: `${archColor}12`, padding: '1px 6px', borderRadius: 3 }}>CURRENT</span>}
+                    </div>
+                    {archDecks.map(d => {
+                      const isSel = swapSelected === d.id;
+                      const moveCount = (d.technique_ids || []).length;
+                      return (
+                        <div key={d.id} onClick={() => { setSwapSelected(d.id); setSwapConfirm(null); setSwapError(null); }} style={{
+                          padding: '12px 14px', marginBottom: 4, borderRadius: 8, cursor: 'pointer',
+                          background: isSel ? `${archColor}08` : '#FFFFFF',
+                          border: `1.5px solid ${isSel ? archColor : T.border}`,
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontFamily: F.display, fontSize: 16, color: T.text }}>{d.deck_name}</span>
+                            <span style={{ fontFamily: F.mono, fontSize: 9, color: T.dim }}>{moveCount} moves</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              });
+            })()}
+          </div>
+
+          {/* Confirmation */}
+          {swapSelected && !swapConfirm && (
+            <div style={{ flexShrink: 0, padding: '12px 20px 28px', borderTop: `1px solid ${T.border}`, background: T.bg }}>
+              <button onClick={() => setSwapConfirm(swapSelected)} style={{
+                width: '100%', padding: '14px', borderRadius: 8, border: 'none',
+                background: '#111827', color: '#FFFFFF',
+                fontFamily: F.mono, fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer',
+              }}>
+                Switch to {swapDecks.find(d => d.id === swapSelected)?.deck_name || 'Deck'}
+              </button>
+            </div>
+          )}
+
+          {/* Confirm dialog */}
+          {swapConfirm && (
+            <div style={{ flexShrink: 0, padding: '12px 20px 28px', borderTop: `1px solid ${T.border}`, background: T.bg }}>
+              <div style={{ fontFamily: F.body, fontSize: 12, color: T.muted, marginBottom: 10, textAlign: 'center' }}>
+                This will replace ALL your current moves with the {swapDecks.find(d => d.id === swapConfirm)?.deck_name} starter deck. Your match history and Elo stay the same.
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => { setSwapConfirm(null); setSwapSelected(null); }} style={{
+                  flex: 1, padding: '12px', fontFamily: F.mono, fontSize: 10, letterSpacing: '0.1em',
+                  textTransform: 'uppercase', cursor: 'pointer', borderRadius: 8,
+                  background: '#FFFFFF', border: `1.5px solid ${T.border}`, color: T.muted,
+                }}>Cancel</button>
+                <button onClick={confirmSwapDeck} disabled={swapBusy} style={{
+                  flex: 1, padding: '12px', fontFamily: F.mono, fontSize: 10, letterSpacing: '0.1em',
+                  textTransform: 'uppercase', cursor: 'pointer', borderRadius: 8,
+                  background: T.sub, border: 'none', color: '#FFFFFF',
+                  opacity: swapBusy ? 0.5 : 1,
+                }}>{swapBusy ? '...' : 'Confirm Swap'}</button>
+              </div>
+            </div>
+          )}
+
+          {/* Close button (top) */}
+          {!swapConfirm && (
+            <div style={{ flexShrink: 0, padding: '0 20px 28px', background: T.bg }}>
+              <button onClick={() => { setShowSwapDeck(false); setSwapSelected(null); setSwapConfirm(null); setSwapError(null); }} style={{
+                width: '100%', padding: '10px', fontFamily: F.mono, fontSize: 10, letterSpacing: '0.1em',
+                textTransform: 'uppercase', cursor: 'pointer', borderRadius: 8,
+                background: '#FFFFFF', border: `1.5px solid ${T.border}`, color: T.muted,
+              }}>Close</button>
+            </div>
+          )}
         </div>
       )}
     </div>
