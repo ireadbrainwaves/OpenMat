@@ -192,7 +192,8 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
       const subFinished = m.status === 'finished' && (m.win_method === 'submission' || m.result_method === 'submission');
       if (!subFinished) {
         setSubEscaped(true);
-        setTimeout(() => setSubEscaped(false), 1500);
+        // Holds until player taps — dismissed via overlay continue or auto after 4s
+        setTimeout(() => setSubEscaped(false), 4000);
       }
       lastSubChoiceRef.current = null;
     }
@@ -223,8 +224,8 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
           won: iWon,
           subName: subTech?.name || 'Submission',
           winnerName: iWon ? (profile.display_name || 'You') : (opp?.display_name || 'Opponent'),
+          match: m,
         });
-        setTimeout(() => { setTapOverlay(null); onEnd(m); }, 2500);
       } else {
         // Non-submission finish — show general finish overlay
         const iWon = m.winner_id === profile.id;
@@ -236,8 +237,8 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
           myPoints: myPts,
           oppPoints: oppPts,
           method: winMethod || 'points',
+          match: m,
         });
-        setTimeout(() => { setFinishOverlay(null); onEnd(m); }, 3000);
       }
     }
   }, [matchId]);
@@ -859,8 +860,8 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
       {showReveal && revealData && (
         <RevealOverlay revealData={revealData} yourFlipped={yourFlipped} oppFlipped={oppFlipped} showResult={showResult} onDismiss={dismissReveal} matchContainerRef={matchContainerRef} />
       )}
-      <TapOverlay tapOverlay={tapOverlay} matchContainerRef={matchContainerRef} />
-      <FinishOverlay finishOverlay={finishOverlay} matchContainerRef={matchContainerRef} />
+      <TapOverlay tapOverlay={tapOverlay} matchContainerRef={matchContainerRef} onContinue={() => { const m = tapOverlay?.match; setTapOverlay(null); if (m) onEnd(m); }} />
+      <FinishOverlay finishOverlay={finishOverlay} matchContainerRef={matchContainerRef} onContinue={() => { const m = finishOverlay?.match; setFinishOverlay(null); if (m) onEnd(m); }} />
       <EscapedOverlay visible={subEscaped} subTechName={match?.sub_technique_id ? G.techniques[match.sub_technique_id]?.name : null} matchContainerRef={matchContainerRef} />
 
       {/* ═══ KEYFRAMES ═══ */}

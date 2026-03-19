@@ -98,7 +98,7 @@ export function RevealOverlay({ revealData, yourFlipped, oppFlipped, showResult,
 }
 
 // ── TAP OVERLAY — The Surrender ──────────────────────────
-export function TapOverlay({ tapOverlay, matchContainerRef }) {
+export function TapOverlay({ tapOverlay, matchContainerRef, onContinue }) {
   if (!tapOverlay) return null;
 
   const [phase, setPhase] = useState(0); // 0=black, 1=field
@@ -183,8 +183,8 @@ export function TapOverlay({ tapOverlay, matchContainerRef }) {
         {tapOverlay.won ? 'Submission Victory' : 'You got tapped'} · {tapOverlay.winnerName} wins
       </div>
 
-      {/* Continue */}
-      <button ref={buttonRef} onClick={() => {}} style={{
+      {/* Continue — the ONLY way to leave */}
+      <button ref={buttonRef} onClick={onContinue} style={{
         opacity: 0, marginTop: 32, padding: '14px 40px',
         background: 'transparent', border: `1px solid ${colors.divider}`,
         borderRadius: 10, fontFamily: T.mono, fontSize: 10,
@@ -198,7 +198,7 @@ export function TapOverlay({ tapOverlay, matchContainerRef }) {
 }
 
 // ── FINISH OVERLAY — Points Victory/Defeat ───────────────
-export function FinishOverlay({ finishOverlay, matchContainerRef }) {
+export function FinishOverlay({ finishOverlay, matchContainerRef, onContinue }) {
   if (!finishOverlay) return null;
 
   const colors = finishOverlay.won ? FINISH_COLORS.victory : FINISH_COLORS.defeat;
@@ -259,7 +259,7 @@ export function FinishOverlay({ finishOverlay, matchContainerRef }) {
         Won by {finishOverlay.method}
       </div>
 
-      <button ref={buttonRef} onClick={() => {}} style={{
+      <button ref={buttonRef} onClick={onContinue} style={{
         opacity: 0, marginTop: 32, padding: '14px 40px',
         background: 'transparent', border: `1px solid ${colors.divider}`,
         borderRadius: 10, fontFamily: T.mono, fontSize: 10,

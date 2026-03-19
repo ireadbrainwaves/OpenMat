@@ -84,7 +84,7 @@ export const BottomNav = ({ active, onNavigate }) => {
     { id: "profile", label: "Profile" },
   ];
   return (
-    <div style={{ display: "flex", borderTop: `1px solid ${T.border}`, background: T.bgCard, flexShrink: 0 }}>
+    <div style={{ display: "flex", borderTop: `1px solid ${T.border}`, background: T.bgCard, position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 50 }}>
       {tabs.map(t => (
         <button key={t.id} onClick={() => onNavigate && onNavigate(t.id)} style={{
           flex: 1, padding: "10px 4px", fontFamily: T.mono, fontSize: 9, letterSpacing: "0.08em",
@@ -135,7 +135,7 @@ export const Spinner = () => (
 
 // ── SCREEN WRAPPER ─────────────────────────────────────────
 export const Screen = ({ children }) => (
-  <div style={{ maxWidth: 420, margin: "0 auto", minHeight: "100vh", background: T.bg, color: T.text, fontFamily: T.body, display: "flex", flexDirection: "column" }}>
+  <div style={{ maxWidth: 420, margin: "0 auto", minHeight: "100vh", background: T.bg, color: T.text, fontFamily: T.body, display: "flex", flexDirection: "column", paddingBottom: 56 }}>
     {children}
   </div>
 );
