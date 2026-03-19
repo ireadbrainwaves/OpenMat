@@ -156,25 +156,32 @@ export default function SubMinigame({
         const needsTech = o.id === 'chain_sub' || o.id === 'counter';
         const techPool = o.id === 'chain_sub' ? chainOpts : o.id === 'counter' ? counterOpts : [];
         const noTechs = needsTech && techPool.length === 0;
-        const canUse = myGp >= o.cost && !noTechs;
+        // Only disable if no techniques available for chain/counter — NEVER disable for GP
+        const canUse = !noTechs;
+        const isGassed = myGp < o.cost;
         return (
           <div key={o.id} onClick={() => canUse && setSubSel(o.id)} style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '12px 14px', marginBottom: 5, borderRadius: 8, cursor: canUse ? 'pointer' : 'default',
+            padding: '12px 14px', marginBottom: 5, borderRadius: 8,
+            cursor: canUse ? 'pointer' : 'default',
             opacity: canUse ? 1 : 0.35, transition: 'all 0.15s',
             background: oSel ? o.color + '10' : T.surface,
             border: `1px solid ${oSel ? o.color : T.border}`,
             borderLeft: `3px solid ${oSel ? o.color : T.border}`,
             position: 'relative', zIndex: 3,
-            animation: `fadeSlideUp 0.25s var(--ease-out-expo) ${idx * 0.05}s both`,
           }}>
             <div>
-              <div style={{ ...F.body, fontSize: 13, fontWeight: 600, color: oSel ? T.text : T.muted }}>{o.label}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ ...F.body, fontSize: 13, fontWeight: 600, color: oSel ? T.text : T.muted }}>{o.label}</span>
+                {isGassed && canUse && (
+                  <span style={{ fontFamily: T.mono, fontSize: 7, letterSpacing: '0.06em', padding: '1px 4px', borderRadius: 3, background: '#EF4444', color: '#FFFFFF' }}>GASSED</span>
+                )}
+              </div>
               <div style={{ ...F.mono, fontSize: 10, color: T.dim }}>{noTechs ? 'No techniques available' : o.desc}</div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               {needsTech && !noTechs && <span style={{ ...F.mono, fontSize: 8, color: T.dim }}>{techPool.length} opts</span>}
-              <span style={{ ...F.mono, fontSize: 10, color: T.amber, fontWeight: 700 }}>{o.cost}GP</span>
+              <span style={{ ...F.mono, fontSize: 10, color: isGassed ? '#EF4444' : T.amber, fontWeight: 700 }}>{o.cost}GP</span>
             </div>
           </div>
         );
