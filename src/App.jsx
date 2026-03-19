@@ -196,7 +196,7 @@ export default function App() {
   if (screen === 'match' && matchId) return <AppShell><MatchScreen profile={profile} matchId={matchId} onEnd={handleMatchEnd} isBot={navParams?.isBot || false} botId={navParams?.botId || null} /><BugReportButton currentScreen={screen} matchId={matchId} /></AppShell>;
 
   // NEW: Post-Match Progression (replaces old ResultScreen)
-  if (screen === 'result' && endedMatch) return <AppShell><PostMatchScreen profile={profile} match={endedMatch} onHome={() => { setScreen('main'); setTab('home'); }} onRematch={handleRematch} /><BugReportButton currentScreen={screen} matchId={endedMatch?.id || null} /></AppShell>;
+  if (screen === 'result' && endedMatch) return <AppShell><PostMatchScreen profile={profile} match={endedMatch} onHome={() => { setScreen('main'); setTab('lobby'); }} onRematch={handleRematch} onFixDeck={() => { setScreen('main'); setTab('deck'); }} /><BugReportButton currentScreen={screen} matchId={endedMatch?.id || null} /></AppShell>;
 
   // Main tabs
   return (

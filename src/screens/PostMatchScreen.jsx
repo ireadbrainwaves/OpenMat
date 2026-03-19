@@ -20,7 +20,7 @@ const STRIPE_REQUIREMENTS = {
   brown: [{ stripe: 1, wins: 130, subs: 90 }, { stripe: 2, wins: 155, subs: 110 }, { stripe: 3, wins: 175, subs: 125 }, { stripe: 4, wins: 195, subs: 138 }],
 };
 
-export default function PostMatchScreen({ profile, match, onRematch, onHome }) {
+export default function PostMatchScreen({ profile, match, onRematch, onHome, onFixDeck }) {
   if (!match) return null;
 
   const [learnedTech, setLearnedTech] = useState(null);
@@ -207,8 +207,18 @@ export default function PostMatchScreen({ profile, match, onRematch, onHome }) {
       {/* Actions */}
       <div style={{ display: "flex", gap: 8 }}>
         <Btn full variant="primary" onClick={onRematch}>Rematch</Btn>
-        <Btn full variant="secondary" onClick={onHome}>Home</Btn>
+        <Btn full variant="secondary" onClick={onHome}>Return to Ladder</Btn>
       </div>
+      {!won && onFixDeck && (
+        <button onClick={onFixDeck} style={{
+          width: '100%', marginTop: 8, padding: '12px',
+          background: 'transparent', border: `1px solid ${T.border}`,
+          borderRadius: 8, fontFamily: F.mono, fontSize: 10,
+          color: T.muted, letterSpacing: '0.1em', cursor: 'pointer',
+        }}>
+          Fix Your Deck →
+        </button>
+      )}
     </div>
   );
 }
