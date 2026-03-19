@@ -27,7 +27,7 @@ const Steps = ({ current, total }) => (
 
 function NameStep({ name, setName, onNext }) {
   return (
-    <div style={{ animation: "fadeUp 0.3s ease-out both" }}>
+    <div style={{ animation: "fadeSlideUp 0.3s var(--ease-out-expo) both" }}>
       <div style={{ fontFamily: F.display, fontSize: 32, color: T.text, marginBottom: 8 }}>What's Your Name?</div>
       <div style={{ fontFamily: F.body, fontSize: 13, color: T.muted, marginBottom: 24, lineHeight: 1.6 }}>This is how opponents and training partners will see you.</div>
       <input value={name} onChange={e => setName(e.target.value)} placeholder="Enter your display name" style={{
@@ -40,7 +40,7 @@ function NameStep({ name, setName, onNext }) {
 
 function ArchetypeStep({ archetype, setArchetype, onNext, onBack }) {
   return (
-    <div style={{ animation: "fadeUp 0.3s ease-out both" }}>
+    <div style={{ animation: "fadeSlideUp 0.3s var(--ease-out-expo) both" }}>
       <div style={{ fontFamily: F.display, fontSize: 28, color: T.text, marginBottom: 4 }}>Choose Your Game</div>
       <div style={{ fontFamily: F.body, fontSize: 13, color: T.muted, marginBottom: 20, lineHeight: 1.6 }}>Your archetype defines your strengths and weaknesses. Pick the style that matches how you roll.</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
@@ -79,7 +79,7 @@ function ArchetypeStep({ archetype, setArchetype, onNext, onBack }) {
 
 function BeltStep({ onNext, onBack }) {
   return (
-    <div style={{ animation: "fadeUp 0.3s ease-out both", textAlign: "center", paddingTop: 20 }}>
+    <div style={{ animation: "fadeSlideUp 0.3s var(--ease-out-expo) both", textAlign: "center", paddingTop: 20 }}>
       <div style={{ display: "inline-flex", width: 80, height: 80, borderRadius: "50%", border: `2px solid ${T.border}`, alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
         <div style={{ width: 40, height: 8, background: '#E8E8E8', borderRadius: 2, border: '1px solid #D1D5DB' }}/>
       </div>
@@ -104,7 +104,7 @@ function BeltStep({ onNext, onBack }) {
 function DeckStep({ archetype, deck, setDeck, decks, loadingDecks, onComplete, saving, onBack }) {
   const archData = ARCHETYPES.find(a => a.id === archetype);
   return (
-    <div style={{ animation: "fadeUp 0.3s ease-out both" }}>
+    <div style={{ animation: "fadeSlideUp 0.3s var(--ease-out-expo) both" }}>
       <div style={{ fontFamily: F.display, fontSize: 28, color: T.text, marginBottom: 4 }}>Pick Your Deck</div>
       <div style={{ fontFamily: F.body, fontSize: 13, color: T.muted, marginBottom: 20, lineHeight: 1.6 }}>Two starter decks for {archData?.name}. You can edit your deck later.</div>
       {loadingDecks ? (

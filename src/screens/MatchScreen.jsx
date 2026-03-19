@@ -12,7 +12,8 @@ import ScoreHeader from './match/ScoreHeader';
 import ResourceBar from './match/ResourceBar';
 import { StancePick, StanceWait } from './match/StancePhase';
 import SubMinigame from './match/SubMinigame';
-import { RevealOverlay, TapOverlay, FinishOverlay, EscapedOverlay } from './match/MatchOverlays';
+import { RevealOverlay, TapOverlay, FinishOverlay, EscapedOverlay, CaughtOverlay } from './match/MatchOverlays';
+import { getAtmosphereClass } from '../lib/atmospheres';
 
 // ═══════════════════════════════════════════════════════════
 // MATCH SCREEN — Production v2
@@ -91,6 +92,10 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
   const prevTurnRef = useRef(0);
   const revealTimerRef = useRef(null);
   const endedRef = useRef(false);
+
+  // Animation refs
+  const matchContainerRef = useRef(null);
+  const particleContainerRef = useRef(null);
 
   // Keep matchRef in sync
   useEffect(() => { matchRef.current = match; }, [match]);
@@ -562,13 +567,19 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
   };
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative', background: T.bg }}>
+    <div ref={matchContainerRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative', background: T.bg }}>
+
+      {/* Atmosphere layer */}
+      <div className={`atmosphere ${getAtmosphereClass(myPos, myStatus === 'top')}`} />
+
+      {/* Particle container */}
+      <div ref={particleContainerRef} style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 80 }} />
 
       {/* ═══ SCORE HEADER ═══ */}
       <ScoreHeader match={match} profile={profile} opp={opp} myPts={myPts} oppPts={oppPts} />
 
       {/* ═══ RESOURCE BAR ═══ */}
-      <ResourceBar myGp={myGp} gpMax={gpMax} gpColor={gpColor} gpPct={gpPct} isDesperation={isDesperation} posRecovery={posRecovery} myStanceVal={myStanceVal} myChain={myChain} oppGp={oppGp} />
+      <ResourceBar myGp={myGp} gpMax={gpMax} gpColor={gpColor} gpPct={gpPct} isDesperation={isDesperation} posRecovery={posRecovery} myStanceVal={myStanceVal} myChain={myChain} oppGp={oppGp} playerBelt={profile.belt} />
 
       {/* ═══ POSITION ═══ */}
       <div style={{ flexShrink: 0, position: 'relative', height: 56, borderBottom: `1px solid ${T.border}`, background: T.surface, display: 'flex', alignItems: 'flex-end', padding: '0 18px 8px', justifyContent: 'space-between' }}>
@@ -817,6 +828,7 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
             lockSubChoice={lockSubChoice}
             getChainSubOptions={getChainSubOptions} getCounterOptions={getCounterOptions}
             subReveal={subReveal} chainSub={chainSub}
+            matchContainerRef={matchContainerRef} particleContainerRef={particleContainerRef}
           />
         )}
 
@@ -837,11 +849,11 @@ export default function MatchScreen({ profile, matchId, onEnd, isBot = false, bo
 
       {/* ═══ OVERLAYS ═══ */}
       {showReveal && revealData && (
-        <RevealOverlay revealData={revealData} yourFlipped={yourFlipped} oppFlipped={oppFlipped} showResult={showResult} onDismiss={dismissReveal} />
+        <RevealOverlay revealData={revealData} yourFlipped={yourFlipped} oppFlipped={oppFlipped} showResult={showResult} onDismiss={dismissReveal} matchContainerRef={matchContainerRef} particleContainerRef={particleContainerRef} />
       )}
-      <TapOverlay tapOverlay={tapOverlay} />
-      <FinishOverlay finishOverlay={finishOverlay} />
-      <EscapedOverlay visible={subEscaped} />
+      <TapOverlay tapOverlay={tapOverlay} matchContainerRef={matchContainerRef} particleContainerRef={particleContainerRef} />
+      <FinishOverlay finishOverlay={finishOverlay} matchContainerRef={matchContainerRef} />
+      <EscapedOverlay visible={subEscaped} matchContainerRef={matchContainerRef} particleContainerRef={particleContainerRef} />
 
       {/* ═══ KEYFRAMES ═══ */}
       <style>{`

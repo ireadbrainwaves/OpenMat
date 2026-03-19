@@ -10,6 +10,7 @@ import { ArchIcon } from '../lib/icons';
 import { RowCard, FullCard, TypeIcon, TierBadge } from '../components/MoveCard';
 import { sb, G } from '../lib/supabase';
 import { GP_COSTS } from '../lib/constants';
+import { beltOrder } from '../lib/supabase';
 
 const F = { display: T.display, mono: T.mono, body: T.body };
 
@@ -84,6 +85,25 @@ export default function DeckScreen({ profile, onProfileUpdate }) {
     return counts;
   }, [deckMoves]);
 
+  // Dead end detection: positions reachable via deck moves but with no exit moves
+  const deadEnds = useMemo(() => {
+    const reachable = new Set();
+    const hasExitFrom = new Set();
+    for (const m of deckMoves) {
+      if (m.from_position) hasExitFrom.add(m.from_position);
+      if (m.to_position && m.to_position !== 'tap') reachable.add(m.to_position);
+    }
+    // Dead end = reachable but no exit
+    const ends = [];
+    for (const posId of reachable) {
+      if (!hasExitFrom.has(posId)) {
+        const pos = G.positions?.[posId];
+        ends.push({ posId, name: pos?.name || posId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()), family: pos?.family || 'other' });
+      }
+    }
+    return ends;
+  }, [deckMoves]);
+
   function getFilteredTechs(techs) {
     let filtered = techs;
     if (filter !== 'all') filtered = filtered.filter(t => t.type === filter);
@@ -154,7 +174,7 @@ export default function DeckScreen({ profile, onProfileUpdate }) {
   }
 
   return (
-    <div style={{ padding: '20px 16px', animation: 'fadeUp 0.3s ease-out' }}>
+    <div style={{ padding: '20px 16px' }}>
       {/* Archetype bar */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10,
@@ -220,6 +240,15 @@ export default function DeckScreen({ profile, onProfileUpdate }) {
           <div style={{ display: 'flex', gap: 8, fontFamily: F.mono, fontSize: 9, color: T.dim }}>
             <span><span style={{ color: '#B8860B' }}>{tierCounts.drilled}</span> drilled</span>
             <span><span style={{ color: '#6B7280' }}>{tierCounts.trained}</span> trained</span>
+          </div>
+          {/* Dead end count */}
+          <div style={{
+            padding: '3px 8px', borderRadius: 4, fontFamily: F.mono, fontSize: 9, fontWeight: 600,
+            background: deadEnds.length > 0 ? T.sub + '10' : T.td + '10',
+            color: deadEnds.length > 0 ? T.sub : T.td,
+            animation: deadEnds.length > 0 ? 'deadEndPulse 1.5s ease-in-out infinite' : 'none',
+          }}>
+            {deadEnds.length > 0 ? `${deadEnds.length} gap${deadEnds.length > 1 ? 's' : ''}` : '0 gaps'}
           </div>
         </div>
       )}
